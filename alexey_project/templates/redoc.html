@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>API Docs</title>
+    <meta charset="utf-8" />
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+  </head>
+  <body>
+    <div id="redoc-container"></div>
+    <script>
+      Redoc.init("http://127.0.0.1:8000/static/schema.yaml", {}, document.getElementById("redoc-container"));
+    </script>
+  </body>
+</html>
