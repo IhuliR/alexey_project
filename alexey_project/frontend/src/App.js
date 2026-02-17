@@ -1,24 +1,29 @@
-import logo from './logo.svg';
-import './App.css';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import PrivateRoute from './components/PrivateRoute';
+import DocumentPage from './pages/DocumentPage';
+import DocumentsPage from './pages/DocumentsPage';
+import LabelsPage from './pages/LabelsPage';
+import LoginPage from './pages/LoginPage';
+import './styles/App.css';
 
 function App() {
+  const hasToken = Boolean(localStorage.getItem('access_token'));
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<PrivateRoute />}>
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/documents/:id" element={<DocumentPage />} />
+          <Route path="/labels" element={<LabelsPage />} />
+        </Route>
+        <Route
+          path="/"
+          element={<Navigate to={hasToken ? '/documents' : '/login'} replace />}
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
