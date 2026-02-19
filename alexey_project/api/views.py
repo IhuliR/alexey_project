@@ -1,3 +1,5 @@
+import re
+
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -35,28 +37,92 @@ class TextDocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def chunks(self, request, pk=None):
         document = self.get_document(pk)
-        content = document.content
-        chunks = content.split('\n\n')
 
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 1))
+        # Normalize newlines to \n for consistent offsets across OS
+        content = (document.content or "").replace("\r\n", "\n").replace("\r", "\n")
 
-        start = (page - 1) * page_size
-        end = start + page_size
+        # Find "paragraph blocks": text separated by one or more blank lines
+        # Skips empty chunks but keeps correct absolute offsets.
+        matches = list(
+            re.finditer(
+                r"\S.*?(?=\n\s*\n|\Z)",
+                content,
+                flags=re.DOTALL
+            )
+        )
+        raw_chunks = [m.group(0) for m in matches]
+        offsets = [m.start() for m in matches]
 
-        if start >= len(chunks):
+        # query params
+        try:
+            page = int(request.query_params.get("page", 1))
+            page_size = int(request.query_params.get("page_size", 1))
+        except ValueError:
+            return Response(
+                {"detail": "page and page_size must be integers."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if page < 1 or page_size < 1:
+            return Response(
+                {"detail": "page and page_size must be >= 1."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Early return for empty documents
+        if not raw_chunks:
+            return Response(
+                {
+                    "document_id": document.id,
+                    "page": page,
+                    "page_size": page_size,
+                    "has_next": False,
+                    "has_prev": False,
+                    "total_chunks": 0,
+                    "chunk": [],
+                    "chunk_index": None,
+                    "chunk_start": None,
+                    "chunk_end": None,
+                },
+                status=status.HTTP_200_OK
+            )
+
+        total_chunks = len(raw_chunks)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+
+        if start_idx >= total_chunks:
             return Response(
                 {"detail": "Страница вне диапазона."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        return Response({
-            "document_id": document.id,
-            "page": page,
-            "has_next": end < len(chunks),
-            "total_chunks": len(chunks),
-            "chunk": chunks[start:end]
-        })
+        page_chunks = raw_chunks[start_idx:end_idx]
+
+        if len(page_chunks) == 1:
+            chunk_index = start_idx
+            chunk_start = offsets[chunk_index]
+            chunk_end = chunk_start + len(page_chunks[0])
+        else:
+            chunk_index = None
+            chunk_start = None
+            chunk_end = None
+
+        return Response(
+            {
+                "document_id": document.id,
+                "page": page,
+                "page_size": page_size,
+                "has_next": end_idx < total_chunks,
+                "has_prev": page > 1,
+                "total_chunks": total_chunks,
+                "chunk": page_chunks,
+                "chunk_index": chunk_index,
+                "chunk_start": chunk_start,
+                "chunk_end": chunk_end,
+            },
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=False, methods=['post'], url_path='upload')
     def upload_file(self, request):

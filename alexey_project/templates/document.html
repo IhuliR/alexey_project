@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Разметка документа</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Разметка текста</h1>
+            <button id="logoutBtn">Выйти</button>
+        </header>
+
+        <div class="sidebar">
+            <h3>Документы</h3>
+            <ul id="documentList"></ul>
+            <div class="pagination">
+                <button id="prevPage">← Пред.</button>
+                <span id="pageInfo"></span>
+                <button id="nextPage">След. →</button>
+            </div>
+            <hr>
+            <h4>Загрузить новый</h4>
+            <form id="uploadForm">
+                <input type="text" name="title" placeholder="Заголовок (необязательно)">
+                <textarea name="content" placeholder="Текст документа" required></textarea>
+                <button type="submit">Загрузить</button>
+            </form>
+        </div>
+
+        <main>
+            <div id="documentMeta">
+                <h2 id="docTitle"></h2>
+                <span id="docDate"></span>
+            </div>
+            <div class="document-text" id="documentText">
+            </div>
+
+            <div class="annotation-panel">
+                <p class="instruction">Выделите текст и выберите метку:</p>
+                <div class="labels" id="labelsContainer">
+                </div>
+                <button id="addLabelBtn">+ Добавить метку</button>
+            </div>
+
+            <div class="current-annotations">
+                <h3>Аннотации этого документа:</h3>
+                <ul id="annotationsList"></ul>
+            </div>
+        </main>
+    </div>
+    <script type="module" src="script.js"></script>
+</body>
+</html>

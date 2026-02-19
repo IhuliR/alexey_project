@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход в систему</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="login-container">
+        <h2>Авторизация</h2>
+        <form id="loginForm">
+            <div>
+                <label>Логин:</label>
+                <input type="text" id="username" required>
+            </div>
+            <div>
+                <label>Пароль:</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit">Войти</button>
+        </form>
+        <div id="errorMessage" style="color: red;"></div>
+    </div>
+    <script type="module">
+        import { login } from './api.js';
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            try {
+                await login(username, password);
+                window.location.href = '/index.html';
+            } catch (err) {
+                document.getElementById('errorMessage').textContent = 'Ошибка входа: ' + err.message;
+            }
+        });
+    </script>
+</body>
+</html>
