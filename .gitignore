@@ -2,7 +2,8 @@
 __pycache__/
 *.py[cod]
 *.so
-
+frontend/node_modules/
+node_modules/
 # Django
 *.log
 db.sqlite3
@@ -34,3 +35,10 @@ htmlcov/
 
 # Local email output
 sent_emails/
+
+# React build
+frontend/build/
+
+# Static files collected by Django
+staticfiles/
+
