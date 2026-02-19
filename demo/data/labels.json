@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "name": "Риск",
+    "slug": "risk",
+    "color": "#fca5a5"
+  },
+  {
+    "id": 2,
+    "name": "Решение",
+    "slug": "decision",
+    "color": "#93c5fd"
+  },
+  {
+    "id": 3,
+    "name": "Действие",
+    "slug": "action",
+    "color": "#86efac"
+  },
+  {
+    "id": 4,
+    "name": "Метрика",
+    "slug": "metric",
+    "color": "#fde68a"
+  }
+]

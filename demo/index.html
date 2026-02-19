@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Вход</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <main class="auth-wrap">
+      <section class="card auth-card">
+        <h1 class="page-title">Демо разметки текста</h1>
+        <p>Войдите с тестовыми учетными данными из <code>data/users.json</code>.</p>
+
+        <form id="login-form" novalidate>
+          <div class="form-row">
+            <label for="username">Имя пользователя</label>
+            <input id="username" name="username" autocomplete="username" required />
+          </div>
+
+          <div class="form-row">
+            <label for="password">Пароль</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+
+          <button id="login-button" class="primary" type="submit">Вход</button>
+          <p id="login-status" class="status-line" aria-live="polite"></p>
+        </form>
+      </section>
+    </main>
+
+    <script src="assets/utils.js"></script>
+    <script src="assets/auth.js"></script>
+    <script src="assets/fake-api.js"></script>
+    <script src="assets/index.js"></script>
+  </body>
+</html>
