@@ -204,9 +204,6 @@ DEMO_PASSWORD=demo
 * HTTPS-сертификат Let's Encrypt;
 * CI/CD через GitHub Actions.
 
-Сайт доступен по адресу:
-
-**https://forma-slov.ru**
 
 ## Автор
 
