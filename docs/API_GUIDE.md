@@ -1,174 +1,79 @@
-# API_GUIDE.md
+# API guide
 
-## 1. Общая информация
+## Общая информация
 
-Backend API проекта Formaslov построен на Django REST Framework.
+- Base URL: `/api/v1/`
+- Основной формат: JSON
+- Documents create/update: `multipart/form-data`
+- Auth header: `Authorization: Bearer <access_token>`
+- По умолчанию API требует аутентификацию; исключения — регистрация и JWT endpoints.
 
-Базовый префикс API:
+Все documents, labels и annotations изолированы по текущему пользователю. Чужой detail resource обычно выглядит как отсутствующий и возвращает `404 Not Found`.
 
-```text
-/api/v1/
-```
+## Краткая карта endpoints
 
-Все основные endpoints, кроме регистрации и получения JWT-токенов, требуют
-авторизации.
+| Метод | Endpoint | Назначение |
+|---|---|---|
+| POST | `users/` | регистрация |
+| GET | `users/me/` | текущий пользователь |
+| POST | `users/set_password/` | смена пароля |
+| POST | `jwt/create/` | access + refresh tokens |
+| POST | `jwt/refresh/` | новый access token |
+| POST | `jwt/verify/` | проверка token |
+| GET, POST | `documents/` | список и создание |
+| GET, PUT, PATCH, DELETE | `documents/{id}/` | документ |
+| POST | `documents/upload/` | импорт UTF-8 `.txt` |
+| GET | `documents/{id}/chunks/` | chunks и offsets |
+| GET, POST | `labels/` | список и создание |
+| GET, PUT, PATCH, DELETE | `labels/{id}/` | метка |
+| GET, POST | `annotations/` | список и создание |
+| GET, PUT, PATCH, DELETE | `annotations/{id}/` | аннотация |
 
-Публичная страница `/demo` не является API endpoint. Она работает на
-статических frontend-данных и не читает и не изменяет документы, метки или
-аннотации в базе.
+URL в таблице указаны относительно `/api/v1/`. Router также поддерживает стандартный `OPTIONS`.
 
-Формат авторизации:
+## Authentication
 
-```http
-Authorization: Bearer <access_token>
-```
-
-Ресурсы `/documents/`, `/labels/` и `/annotations/` требуют JWT для всех
-операций list/create/retrieve/update/delete. Queryset каждого ресурса
-ограничен текущим пользователем: документы и метки связаны с ним напрямую,
-аннотации — через владельца документа.
-
-Актуальный роутинг задаётся в:
-
-- `backend/config/urls.py`
-- `backend/api/urls.py`
-
-Сериализация задаётся в:
-
-- `backend/api/serializers.py`
-
-Бизнес-логика API находится в:
-
-- `backend/api/views.py`
-
-Статический OpenAPI-файл расположен в:
-
-- `backend/static/schema.yaml`
-
-Важно: текущий `schema.yaml` может расходиться с фактическим поведением кода. При конфликте сначала проверяй `urls.py`, `views.py`, `serializers.py`, затем обновляй документацию и schema.
-
-## 2. Аутентификация
-
-Регистрация и JWT endpoints подключены через Djoser/Simple JWT:
-
-```python
-path('v1/', include('djoser.urls'))
-path('v1/', include('djoser.urls.jwt'))
-```
-
-### 2.1. Регистрация
+### Регистрация
 
 ```http
 POST /api/v1/users/
 Content-Type: application/json
 ```
 
-Request:
-
 ```json
 {
-  "username": "user",
-  "password": "strong-password"
+  "username": "anna",
+  "password": "Strong-password-42"
 }
 ```
 
-Response `201 Created` содержит созданного пользователя без пароля.
-Endpoint предоставляется Djoser и доступен без JWT. Frontend после успешной
-регистрации перенаправляет пользователя на `/login`.
-
-### 2.2. Получить текущего пользователя
-
-```http
-GET /api/v1/users/me/
-Authorization: Bearer <access_token>
-```
-
-Response `200 OK`:
+Поле `email` также принимается, но не обязательно. Успех: `201 Created`:
 
 ```json
 {
-  "id": 1,
-  "username": "ilya"
+  "email": "",
+  "username": "anna",
+  "id": 7
 }
 ```
 
-Endpoint предоставляется Djoser и требует JWT. Пароль, hash пароля и лишние
-профильные поля в ответ не включаются.
+Password проходит стандартные Django validators и никогда не возвращается в response.
 
-### 2.3. Изменить пароль
+### JWT
 
-```http
-POST /api/v1/users/set_password/
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "current_password": "old-password",
-  "new_password": "new-strong-password",
-  "re_new_password": "new-strong-password"
-}
-```
-
-Response при успехе:
-
-```http
-204 No Content
-```
-
-Endpoint предоставляется Djoser. В `DJOSER` включён
-`SET_PASSWORD_RETYPE`, поэтому оба поля нового пароля обязательны. Djoser:
-
-- проверяет текущий пароль;
-- проверяет совпадение `new_password` и `re_new_password`;
-- применяет стандартные Django password validators;
-- меняет пароль через модель пользователя;
-- не возвращает и не записывает пароль в API-ответ.
-
-Примеры `400 Bad Request`:
-
-```json
-{
-  "current_password": ["Invalid password."]
-}
-```
-
-```json
-{
-  "non_field_errors": ["The two password fields didn't match."]
-}
-```
-
-```json
-{
-  "new_password": ["This password is too common."]
-}
-```
-
-Frontend преобразует эти ответы в короткие русскоязычные сообщения. При
-успешной смене пароля текущие JWT access/refresh tokens не удаляются, поэтому
-пользователь остаётся авторизованным.
-
-### 2.4. Получить пару токенов
+Получить пару tokens:
 
 ```http
 POST /api/v1/jwt/create/
 Content-Type: application/json
 ```
 
-Request:
-
 ```json
 {
-  "username": "user",
-  "password": "password"
+  "username": "anna",
+  "password": "Strong-password-42"
 }
 ```
-
-Response:
 
 ```json
 {
@@ -177,110 +82,103 @@ Response:
 }
 ```
 
-Frontend не должен жёстко полагаться на конкретный HTTP status этого endpoint. В текущем коде `LoginPage` проверяет наличие `access` и `refresh`, а не status.
-
-### 2.5. Обновить access token
+Обновить access token:
 
 ```http
 POST /api/v1/jwt/refresh/
 Content-Type: application/json
 ```
 
-Request:
-
 ```json
-{
-  "refresh": "<refresh_token>"
-}
+{"refresh": "<refresh_token>"}
 ```
 
-Response:
-
-```json
-{
-  "access": "<new_access_token>"
-}
-```
-
-### 2.6. Проверить token
+Проверить token:
 
 ```http
 POST /api/v1/jwt/verify/
 Content-Type: application/json
 ```
 
-Request:
+```json
+{"token": "<token>"}
+```
+
+Успешные JWT операции возвращают `200 OK`. Access token передаётся в защищённые endpoints:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+### Текущий пользователь и пароль
+
+```http
+GET /api/v1/users/me/
+Authorization: Bearer <access_token>
+```
 
 ```json
 {
-  "token": "<token>"
+  "id": 7,
+  "username": "anna"
 }
 ```
 
-При валидном токене возвращается успешный пустой/служебный ответ Simple JWT.
+Смена пароля:
 
-## 3. Documents API
+```http
+POST /api/v1/users/set_password/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
 
-Ресурс документов управляет текстами пользователя.
+```json
+{
+  "current_password": "Strong-password-42",
+  "new_password": "Updated-password-84",
+  "re_new_password": "Updated-password-84"
+}
+```
 
-Модель: `backend/core/models.py` (`core.models.TextDocument`).
+Успех: `204 No Content`. Djoser проверяет текущий пароль, совпадение новых паролей и Django password validators.
 
-Поля:
+## Documents
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID документа |
-| `user` | integer/string | Владелец документа, read-only |
-| `title` | string | Человекочитаемое название документа |
-| `slug` | string | Технический slug, read-only, уникален в рамках пользователя |
-| `original_filename` | string | Исходное имя загруженного файла, если применимо |
-| `content` | string | Полный текст документа |
-| `created_at` | datetime | Дата создания, read-only |
+Document representation:
 
-Если `title` пустой, backend использует имя файла без расширения из
-`original_filename`, а затем fallback `Новый документ`. `slug` генерируется
-backend через `python-slugify`; frontend не передаёт и не управляет им.
+```json
+{
+  "id": 12,
+  "user": 7,
+  "title": "Тёзка",
+  "slug": "tezka",
+  "original_filename": "Тёзка.txt",
+  "content": "Полный текст",
+  "created_at": "2026-01-01T10:00:00Z"
+}
+```
 
-Текущее важное ограничение: `TextDocumentViewSet` использует `parser_classes = [MultiPartParser]`, поэтому create/update документов выполняются через `multipart/form-data`.
+`user`, `slug` и `created_at` read-only. Title очищается от внешних пробелов. При пустом title используется stem `original_filename`, затем `Новый документ`. Slug генерируется и остаётся уникальным в рамках пользователя; при изменении title он пересоздаётся.
 
-### 3.1. Список документов
+### Список
 
 ```http
 GET /api/v1/documents/
 Authorization: Bearer <access_token>
 ```
 
-Query parameters:
-
-| Параметр | Тип | Описание |
-|---|---|---|
-| `limit` | integer | Количество документов на странице |
-| `offset` | integer | Смещение для пагинации |
-
-Response:
+Без `limit` response — массив документов. При `?limit=<n>&offset=<n>` включается DRF LimitOffsetPagination:
 
 ```json
 {
   "count": 2,
   "next": null,
   "previous": null,
-  "results": [
-    {
-      "id": 1,
-      "user": 1,
-      "title": "Тёзка",
-      "slug": "tezka",
-      "original_filename": "",
-      "content": "Text...",
-      "created_at": "2026-01-01T00:00:00Z"
-    }
-  ]
+  "results": []
 }
 ```
 
-Особенность: пользователь получает только свои документы. Фильтрация выполняется в `TextDocumentViewSet.get_queryset()`.
-
-### 3.2. Создать документ вручную
+### Создание и изменение
 
 ```http
 POST /api/v1/documents/
@@ -288,107 +186,26 @@ Authorization: Bearer <access_token>
 Content-Type: multipart/form-data
 ```
 
-Form fields:
-
 | Поле | Обязательное | Описание |
 |---|---:|---|
-| `title` | нет | Название документа; при пустом значении используется fallback |
-| `original_filename` | нет | Исходное имя файла, например `Тёзка.txt` |
-| `content` | да | Текст документа |
+| `content` | да | полный текст |
+| `title` | нет | название |
+| `original_filename` | нет | исходное имя файла |
 
-Переносы строк в `content` нормализуются при сохранении: `\r\n` и `\r`
-преобразуются в `\n`. Это обеспечивает единые offsets для просмотра,
-аннотаций и экспорта.
-
-Response `201 Created`:
-
-```json
-{
-  "id": 1,
-  "user": 1,
-  "title": "Тёзка",
-  "slug": "tezka",
-  "original_filename": "",
-  "content": "Text...",
-  "created_at": "2026-01-01T00:00:00Z"
-}
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/documents/ \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "title=Пример" \
+  -F $'content=Первый абзац\n\nВторой абзац'
 ```
 
-### 3.3. Получить документ
+Успех: `201 Created`. Backend нормализует `\r\n` и `\r` в `\n`.
 
-```http
-GET /api/v1/documents/{id}/
-Authorization: Bearer <access_token>
-```
+`PUT /documents/{id}/` и `PATCH /documents/{id}/` также требуют `multipart/form-data`; успех — `200 OK`. Удаление: `DELETE /documents/{id}/` → `204 No Content`. Удаление документа каскадно удаляет его annotations.
 
-Response:
+> Изменение `content` не пересчитывает существующие annotation offsets и сохранённый `text`.
 
-```json
-{
-  "id": 1,
-  "user": 1,
-  "title": "Тёзка",
-  "slug": "tezka",
-  "original_filename": "Тёзка.txt",
-  "content": "Text...",
-  "created_at": "2026-01-01T00:00:00Z"
-}
-```
-
-Если документ не принадлежит пользователю, он не должен быть доступен.
-
-### 3.4. Частично обновить документ
-
-```http
-PATCH /api/v1/documents/{id}/
-Authorization: Bearer <access_token>
-Content-Type: multipart/form-data
-```
-
-Form fields:
-
-| Поле | Обязательное | Описание |
-|---|---:|---|
-| `title` | нет | Новое название |
-| `original_filename` | нет | Новое исходное имя файла |
-| `content` | нет | Новый текст |
-
-Если `title` изменился, backend автоматически пересоздаёт `slug`, сохраняя
-уникальность в рамках текущего пользователя. URL документа продолжает
-использовать числовой `id`.
-
-Response:
-
-```json
-{
-  "id": 1,
-  "user": 1,
-  "title": "Updated title",
-  "slug": "updated-title",
-  "original_filename": "",
-  "content": "Updated text...",
-  "created_at": "2026-01-01T00:00:00Z"
-}
-```
-
-Важно: изменение `content` может сделать существующие offsets аннотаций невалидными. Сейчас автоматического пересчёта аннотаций нет.
-
-### 3.5. Удалить документ
-
-```http
-DELETE /api/v1/documents/{id}/
-Authorization: Bearer <access_token>
-```
-
-Response:
-
-```http
-204 No Content
-```
-
-При удалении документа связанные аннотации удаляются каскадно.
-
-### 3.6. Загрузить `.txt` файл
+### Импорт файла
 
 ```http
 POST /api/v1/documents/upload/
@@ -396,457 +213,163 @@ Authorization: Bearer <access_token>
 Content-Type: multipart/form-data
 ```
 
-Form fields:
+Единственное поле — `file`. Backend принимает имя, оканчивающееся на `.txt` в нижнем регистре, и UTF-8 content. Файл декодируется и сразу сохраняется как document; сам файл в media storage не помещается.
 
-| Поле | Обязательное | Описание |
-|---|---:|---|
-| `file` | да | `.txt` файл в UTF-8 |
-
-Backend-поведение:
-
-- если файла нет — `400`, `{"detail": "Файл не найден."}`;
-- если расширение не `.txt` — `400`, `{"detail": "Только .txt файлы разрешены."}`;
-- если файл не читается как UTF-8 — `400`, `{"detail": "Ошибка при чтении файла. Проверьте кодировку."}`;
-- при успехе создаётся `TextDocument`, где `title` равен имени файла без
-  расширения, `original_filename` хранит полное исходное имя, а `slug`
-  генерируется автоматически;
-- переносы строк `\r\n` и `\r` в прочитанном тексте сохраняются как `\n`.
-
-Response `201 Created`:
-
-```json
-{
-  "id": 1,
-  "user": 1,
-  "title": "example",
-  "slug": "example",
-  "original_filename": "example.txt",
-  "content": "File content...",
-  "created_at": "2026-01-01T00:00:00Z"
-}
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/documents/upload/ \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@example.txt;type=text/plain"
 ```
 
-### 3.7. Получить chunk документа
+Возможные `400`: поле отсутствует, расширение не `.txt`, содержимое не UTF-8.
+
+### Chunks
 
 ```http
-GET /api/v1/documents/{id}/chunks/?page=1&page_size=1
+GET /api/v1/documents/12/chunks/?page=1&page_size=1
 Authorization: Bearer <access_token>
 ```
 
-Query parameters:
-
-| Параметр | Тип | По умолчанию | Описание |
-|---|---|---:|---|
-| `page` | integer | `1` | Номер страницы chunks, начиная с 1 |
-| `page_size` | integer | `1` | Количество chunks в ответе |
-
-Backend делит сохранённый `document.content` на блоки текста, разделённые
-пустыми строками. `chunk_start` и `chunk_end` всегда относятся к исходной
-сохранённой строке без дополнительного преобразования в chunk endpoint.
-
-Response для одного chunk:
+Текст делится на непустые блоки, разделённые одной или несколькими пустыми строками. Response:
 
 ```json
 {
-  "document_id": 1,
+  "document_id": 12,
   "page": 1,
   "page_size": 1,
   "has_next": true,
   "has_prev": false,
-  "total_chunks": 3,
-  "chunk": ["First paragraph..."],
+  "total_chunks": 2,
+  "chunk": ["Первый абзац"],
   "chunk_index": 0,
   "chunk_start": 0,
-  "chunk_end": 18
+  "chunk_end": 12
 }
 ```
 
-Response для пустого документа:
+`chunk_start` и `chunk_end` — абсолютный полуоткрытый диапазон `[start, end)` в сохранённом `content`. При `page_size > 1` массив содержит несколько chunks, а `chunk_index`, `chunk_start` и `chunk_end` равны `null`.
+
+Для пустого документа возвращается пустой `chunk`, `total_chunks: 0` и null offsets. Нечисловые или неположительные параметры дают `400`, страница за диапазоном — `404`.
+
+## Labels
+
+Label representation:
 
 ```json
 {
-  "document_id": 1,
-  "page": 1,
-  "page_size": 1,
-  "has_next": false,
-  "has_prev": false,
-  "total_chunks": 0,
-  "chunk": [],
-  "chunk_index": null,
-  "chunk_start": null,
-  "chunk_end": null
+  "id": 4,
+  "name": "Персонаж",
+  "color": "#ffcc00"
 }
 ```
 
-Ошибки:
+- `GET /labels/` → массив меток пользователя;
+- `POST /labels/` → `201 Created`;
+- `GET /labels/{id}/` → одна метка;
+- `PUT|PATCH /labels/{id}/` → обновление;
+- `DELETE /labels/{id}/` → `204 No Content`.
+
+Create example:
+
+```json
+{
+  "name": "Персонаж",
+  "color": "#ffcc00"
+}
+```
+
+`name` обязательно, не длиннее 100 символов и уникально в рамках пользователя. `color` — строка до 7 символов с default `#ffff00`; API отдельно не проверяет HEX-формат.
+
+Если label используется annotations, delete возвращает `409 Conflict`:
+
+```json
+{
+  "detail": "Нельзя удалить метку «Персонаж»: она используется в 2 аннотациях. Сначала удалите или измените эти аннотации.",
+  "code": "label_in_use",
+  "annotations_count": 2
+}
+```
+
+## Annotations
+
+Annotation representation:
+
+```json
+{
+  "id": 31,
+  "document": 12,
+  "label": 4,
+  "start": 0,
+  "end": 6,
+  "text": "Начало",
+  "created_at": "2026-01-01T10:05:00Z"
+}
+```
+
+- `GET /annotations/` → массив annotations пользователя;
+- `GET /annotations/?document=12` → фильтр по document ID;
+- `POST /annotations/` → `201 Created`;
+- `GET /annotations/{id}/` → одна annotation;
+- `PUT|PATCH /annotations/{id}/` → обновление и повторное вычисление `text`;
+- `DELETE /annotations/{id}/` → `204 No Content`.
+
+Create request:
+
+```json
+{
+  "document": 12,
+  "label": 4,
+  "start": 0,
+  "end": 6
+}
+```
+
+Правила:
+
+- document и label должны принадлежать текущему пользователю;
+- `start` и `end` — неотрицательные integer offsets;
+- `start < end <= len(document.content)`;
+- выделение не может состоять только из whitespace;
+- `text` read-only и вычисляется как `document.content[start:end]`;
+- пересечения и дубликаты backend не запрещает.
+
+Поле модели `text` ограничено 500 символами. Serializer не проверяет эту длину до записи, поэтому клиенту не следует отправлять диапазон длиннее 500 символов.
+
+## Ошибки
+
+Типовые статусы:
+
+| Status | Значение |
+|---|---|
+| `400` | validation error или неверные параметры |
+| `401` | отсутствует/невалиден JWT |
+| `404` | resource не существует или не принадлежит пользователю |
+| `409` | label используется annotations |
+
+DRF validation errors обычно сгруппированы по полям:
+
+```json
+{
+  "end": ["Конец выделения должен быть больше начала."]
+}
+```
+
+Кастомные action errors используют `detail`, например:
 
 ```json
 {"detail": "page and page_size must be integers."}
 ```
 
-```json
-{"detail": "page and page_size must be >= 1."}
-```
-
-```json
-{"detail": "Страница вне диапазона."}
-```
-
-## 4. Labels API
-
-Ресурс меток управляет личным списком labels текущего пользователя.
-
-Модель: `backend/core/models.py` (`core.models.Label`).
-
-Поля:
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID метки |
-| `name` | string | Название метки |
-| `color` | string | HEX-цвет, например `#ffff00` |
-
-Каждая метка принадлежит пользователю. Поле владельца не принимается и не
-возвращается API: backend определяет владельца по JWT. Имя метки уникально
-только в рамках одного пользователя, поэтому разные пользователи могут создать
-метки с одинаковым названием.
-
-### 4.1. Список меток
-
-```http
-GET /api/v1/labels/
-Authorization: Bearer <access_token>
-```
-
-Response:
-
-```json
-[
-  {
-    "id": 1,
-    "name": "Тема",
-    "color": "#ffff00"
-  }
-]
-```
-
-Пользователь получает только свои метки. Запрос конкретной чужой метки
-возвращает `404 Not Found`.
-
-### 4.2. Создать метку
-
-```http
-POST /api/v1/labels/
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "name": "Тема",
-  "color": "#ffff00"
-}
-```
-
-Response `201 Created`:
-
-```json
-{
-  "id": 1,
-  "name": "Тема",
-  "color": "#ffff00"
-}
-```
-
-При повторном имени у того же пользователя возвращается `400 Bad Request`.
-
-### 4.3. Получить метку
-
-```http
-GET /api/v1/labels/{id}/
-Authorization: Bearer <access_token>
-```
-
-### 4.4. Обновить метку
-
-```http
-PATCH /api/v1/labels/{id}/
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "name": "Новая метка",
-  "color": "#ff0000"
-}
-```
-
-### 4.5. Удалить метку
-
-```http
-DELETE /api/v1/labels/{id}/
-Authorization: Bearer <access_token>
-```
-
-Response:
-
-```http
-204 No Content
-```
-
-Если метка используется в аннотациях, backend сохраняет метку и связанные
-аннотации и возвращает `409 Conflict`:
-
-```json
-{
-  "detail": "Нельзя удалить метку «зло»: она используется в 7 аннотациях. Сначала удалите или измените эти аннотации.",
-  "code": "label_in_use",
-  "annotations_count": 7
-}
-```
-
-`Annotation.label` продолжает использовать `on_delete=PROTECT`: связанные
-аннотации не удаляются автоматически.
-
-## 5. Annotations API
-
-Ресурс аннотаций управляет привязкой фрагментов текста к меткам.
-
-Модель: `backend/core/models.py` (`core.models.Annotation`).
-
-Поля:
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID аннотации |
-| `document` | integer | ID документа |
-| `label` | integer | ID метки |
-| `start` | integer | Абсолютный start-offset в `document.content` |
-| `end` | integer | Абсолютный end-offset в `document.content` |
-| `text` | string | Текст фрагмента, read-only |
-| `created_at` | datetime | Дата создания, read-only |
-
-### 5.1. Список аннотаций
-
-```http
-GET /api/v1/annotations/
-Authorization: Bearer <access_token>
-```
-
-Response:
-
-```json
-[
-  {
-    "id": 1,
-    "document": 1,
-    "label": 1,
-    "start": 0,
-    "end": 10,
-    "text": "Example...",
-    "created_at": "2026-01-01T00:00:00Z"
-  }
-]
-```
-
-Пользователь получает только аннотации к своим документам.
-
-### 5.2. Список аннотаций по документу
-
-Поддерживается query parameter `document`:
-
-```http
-GET /api/v1/annotations/?document=1
-Authorization: Bearer <access_token>
-```
-
-При создании или обновлении аннотации поля `document` и `label` принимают
-только объекты текущего пользователя. Чужой ID обрабатывается как невалидное
-значение поля и возвращает `400 Bad Request` без раскрытия существования
-объекта.
-
-Response — массив аннотаций только для указанного документа и только в рамках документов текущего пользователя.
-
-### 5.3. Создать аннотацию
-
-```http
-POST /api/v1/annotations/
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "document": 1,
-  "label": 1,
-  "start": 0,
-  "end": 10,
-  "text": "Selected t"
-}
-```
-
-Frontend может передавать `text` для явного отображения своего контракта, но
-backend не доверяет этому значению и всегда вычисляет сохранённый текст как
-`document.content[start:end]`.
-
-Response `201 Created`:
-
-```json
-{
-  "id": 1,
-  "document": 1,
-  "label": 1,
-  "start": 0,
-  "end": 10,
-  "text": "Selected t",
-  "created_at": "2026-01-01T00:00:00Z"
-}
-```
-
-Backend сам вычисляет поле `text`:
-
-```python
-selected_text = document.content[start:end]
-```
-
-При создании и обновлении backend проверяет:
-
-- документ принадлежит текущему пользователю;
-- метка принадлежит текущему пользователю;
-- `start >= 0`;
-- `start < end`;
-- `end <= len(document.content)`;
-- выбранный фрагмент не состоит только из пробелов и переносов строк.
-
-### 5.4. Получить аннотацию
-
-```http
-GET /api/v1/annotations/{id}/
-Authorization: Bearer <access_token>
-```
-
-Доступ должен быть только к аннотациям документов текущего пользователя.
-
-### 5.5. Обновить аннотацию
-
-```http
-PATCH /api/v1/annotations/{id}/
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "label": 2,
-  "start": 5,
-  "end": 20
-}
-```
-
-При изменении `document`, `start` или `end` backend повторно вычисляет `text`
-по актуальным координатам.
-
-### 5.6. Удалить аннотацию
-
-```http
-DELETE /api/v1/annotations/{id}/
-Authorization: Bearer <access_token>
-```
-
-Response:
-
-```http
-204 No Content
-```
-
-## 6. Error format
-
-В кастомных ошибках backend часто использует формат:
-
-```json
-{
-  "detail": "Описание ошибки"
-}
-```
-
-DRF validation errors могут иметь формат:
-
-```json
-{
-  "field_name": ["Error message"]
-}
-```
-
-Frontend сейчас отображает ошибки через `JSON.stringify(error.response.data)`. Поэтому при изменении API желательно сохранять JSON-ответы понятными и компактными.
-
-## 7. Пагинация
-
-Для `/documents/` используется DRF `LimitOffsetPagination`.
-
-Response format:
-
-```json
-{
-  "count": 100,
-  "next": "http://...",
-  "previous": null,
-  "results": []
-}
-```
-
-Для `/documents/{id}/chunks/` используется кастомная page/page_size пагинация, не DRF pagination.
-
-## 8. Frontend-зависимости от API
-
-Frontend ожидает следующие API-особенности:
-
-1. `users/` принимает `username` и `password` для регистрации.
-2. `jwt/create/` возвращает `access` и `refresh`.
-3. Все защищённые endpoints принимают `Authorization: Bearer <token>`.
-4. `documents/` возвращает limit/offset pagination.
-5. Создание и обновление документов принимают `FormData`.
-6. React-форма читает `.txt` через `FileReader` и отправляет результат как
-   `content`, имя файла как `original_filename` и редактируемый `title` в
-   `documents/`; отдельный `documents/upload/` endpoint продолжает принимать
-   `.txt` файл в поле `file`.
-7. `documents/{id}/chunks/` возвращает `chunk`, `chunk_start`, `chunk_end`, `has_next`, `has_prev`, `total_chunks`, `chunk_index`.
-8. `annotations/` принимает абсолютные offsets и возвращает сохранённую аннотацию.
-9. `labels/` возвращает массив меток без пагинации.
-10. Frontend экспортирует schema v2 с полным `document.content`; текст каждой
-   аннотации повторно вычисляется через `document.content.slice(start, end)`.
-   Метаданные документа включают `title`, `slug` и `original_filename`, а имя
-   файла формируется как `{slug}_export.json` с fallback
-   `document_{id}_export.json`.
-
-## 9. Известные расхождения и зоны риска
-
-### 9.1. `schema.yaml` не полностью точен
-
-Нужно обновить описание:
-
-- request для `/documents/upload/` должен описывать поле `file`, а не `TextDocument`;
-- response для `/documents/{id}/chunks/` должен описывать кастомный объект chunk-response, а не `TextDocument`;
-- JWT status codes нужно проверить по фактическому поведению Djoser/Simple JWT;
-- `annotations/?document=<id>` отсутствует/неочевиден в schema;
-- endpoints документов фактически используют `multipart/form-data` из-за `MultiPartParser`.
-
-## 10. Правила обновления API
-
-При любом изменении API:
-
-1. Обновить `backend/api/views.py`, `backend/api/serializers.py`, `backend/api/urls.py`.
-2. Обновить/добавить тесты.
-3. Обновить `backend/static/schema.yaml`.
-4. Обновить этот `API_GUIDE.md`.
-5. Проверить frontend-зависимости в `frontend/src/api/api.js` и страницах.
-6. Не менять формат существующих ответов без необходимости.
-7. Если формат ответа меняется, обновить frontend в том же изменении.
+## Frontend contract
+
+Frontend зависит от следующих деталей:
+
+- JWT response содержит `access` и `refresh`;
+- document create/update принимает `FormData`;
+- chunk endpoint возвращает массив `chunk` и абсолютные offsets;
+- annotation references используют числовые IDs;
+- `text` annotation формирует backend;
+- delete занятой label возвращает `code: label_in_use`;
+- export JSON строится в `frontend/src/utils/export.js`; backend export endpoint отсутствует.
+
+При изменении контракта нужно синхронно обновить backend tests, frontend consumer/tests, этот guide и `backend/static/schema.yaml`.

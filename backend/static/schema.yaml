@@ -1,657 +1,762 @@
-openapi: 3.0.2
+openapi: 3.0.3
 info:
-  title: ''
-  version: ''
+  title: Formaslov API
+  version: "1.0"
+  description: REST API для документов, пользовательских меток и текстовых аннотаций.
+security:
+  - bearerAuth: []
 paths:
-  /api/v1/documents/:
-    get:
-      operationId: listTextDocuments
-      description: ''
-      parameters:
-      - name: limit
-        required: false
-        in: query
-        description: Number of results to return per page.
-        schema:
-          type: integer
-      - name: offset
-        required: false
-        in: query
-        description: The initial index from which to return the results.
-        schema:
-          type: integer
+  /api/v1/users/:
+    post:
+      tags: [Auth]
+      summary: Зарегистрировать пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
       responses:
-        '200':
+        "201":
+          description: Пользователь создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisteredUser"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/users/me/:
+    get:
+      tags: [Auth]
+      summary: Получить текущего пользователя
+      responses:
+        "200":
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/users/set_password/:
+    post:
+      tags: [Auth]
+      summary: Изменить пароль
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChange"
+      responses:
+        "204":
+          description: Пароль изменён
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/jwt/create/:
+    post:
+      tags: [Auth]
+      summary: Получить access и refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenObtain"
+      responses:
+        "200":
+          description: Пара JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/jwt/refresh/:
+    post:
+      tags: [Auth]
+      summary: Обновить access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRefresh"
+      responses:
+        "200":
+          description: Новый access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/jwt/verify/:
+    post:
+      tags: [Auth]
+      summary: Проверить token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenVerify"
+      responses:
+        "200":
+          description: Token валиден
           content:
             application/json:
               schema:
                 type: object
-                required:
-                - count
-                - results
-                properties:
-                  count:
-                    type: integer
-                    example: 123
-                  next:
-                    type: string
-                    nullable: true
-                    format: uri
-                    example: http://api.example.org/accounts/?offset=400&limit=100
-                  previous:
-                    type: string
-                    nullable: true
-                    format: uri
-                    example: http://api.example.org/accounts/?offset=200&limit=100
-                  results:
-                    type: array
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/documents/:
+    get:
+      tags: [Documents]
+      summary: Получить документы пользователя
+      description: Без limit возвращает массив. Если limit передан, возвращает объект LimitOffsetPagination.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Список документов
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
                     items:
-                      $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
+                      $ref: "#/components/schemas/TextDocument"
+                  - $ref: "#/components/schemas/PaginatedDocuments"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
-      operationId: createTextDocument
-      description: ''
-      parameters: []
+      tags: [Documents]
+      summary: Создать документ
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/TextDocument'
+              $ref: "#/components/schemas/TextDocumentCreate"
       responses:
-        '201':
+        "201":
+          description: Документ создан
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
+                $ref: "#/components/schemas/TextDocument"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /api/v1/documents/{id}/:
+    parameters:
+      - $ref: "#/components/parameters/Id"
     get:
-      operationId: retrieveTextDocument
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this text document.
-        schema:
-          type: string
+      tags: [Documents]
+      summary: Получить документ
       responses:
-        '200':
+        "200":
+          description: Документ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
+                $ref: "#/components/schemas/TextDocument"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
-      operationId: updateTextDocument
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this text document.
-        schema:
-          type: string
+      tags: [Documents]
+      summary: Полностью обновить документ
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/TextDocument'
+              $ref: "#/components/schemas/TextDocumentCreate"
       responses:
-        '200':
+        "200":
+          description: Документ обновлён
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
+                $ref: "#/components/schemas/TextDocument"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     patch:
-      operationId: partialUpdateTextDocument
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this text document.
-        schema:
-          type: string
+      tags: [Documents]
+      summary: Частично обновить документ
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/TextDocument'
+              $ref: "#/components/schemas/TextDocumentPatch"
       responses:
-        '200':
+        "200":
+          description: Документ обновлён
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
+                $ref: "#/components/schemas/TextDocument"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
-      operationId: destroyTextDocument
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this text document.
-        schema:
-          type: string
+      tags: [Documents]
+      summary: Удалить документ
       responses:
-        '204':
-          description: ''
-      tags:
-      - api
-  /api/v1/documents/{id}/chunks/:
-    get:
-      operationId: chunksTextDocument
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this text document.
-        schema:
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
-  /api/v1/labels/:
-    get:
-      operationId: listLabels
-      description: ''
-      parameters: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Label'
-          description: ''
-      tags:
-      - api
-    post:
-      operationId: createLabel
-      description: ''
-      parameters: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Label'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Label'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Label'
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Label'
-          description: ''
-      tags:
-      - api
-  /api/v1/labels/{id}/:
-    get:
-      operationId: retrieveLabel
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this label.
-        schema:
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Label'
-          description: ''
-      tags:
-      - api
-    put:
-      operationId: updateLabel
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this label.
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Label'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Label'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Label'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Label'
-          description: ''
-      tags:
-      - api
-    patch:
-      operationId: partialUpdateLabel
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this label.
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Label'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Label'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Label'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Label'
-          description: ''
-      tags:
-      - api
-    delete:
-      operationId: destroyLabel
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this label.
-        schema:
-          type: string
-      responses:
-        '204':
-          description: ''
-        '409':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LabelInUseError'
-          description: The label is referenced by one or more annotations.
-      tags:
-      - api
-  /api/v1/annotations/:
-    get:
-      operationId: listAnnotations
-      description: ''
-      parameters: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Annotation'
-          description: ''
-      tags:
-      - api
-    post:
-      operationId: createAnnotation
-      description: ''
-      parameters: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Annotation'
-          description: ''
-      tags:
-      - api
-  /api/v1/annotations/{id}/:
-    get:
-      operationId: retrieveAnnotation
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this annotation.
-        schema:
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Annotation'
-          description: ''
-      tags:
-      - api
-    put:
-      operationId: updateAnnotation
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this annotation.
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Annotation'
-          description: ''
-      tags:
-      - api
-    patch:
-      operationId: partialUpdateAnnotation
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this annotation.
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Annotation'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Annotation'
-          description: ''
-      tags:
-      - api
-    delete:
-      operationId: destroyAnnotation
-      description: ''
-      parameters:
-      - name: id
-        in: path
-        required: true
-        description: A unique integer value identifying this annotation.
-        schema:
-          type: string
-      responses:
-        '204':
-          description: ''
-      tags:
-      - api
+        "204":
+          description: Документ удалён
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/documents/upload/:
     post:
-      operationId: uploadFileTextDocument
-      description: ''
-      parameters: []
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TextDocumentUpload'
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TextDocument'
-          description: ''
-      tags:
-      - api
-  /api/v1/users/:
-    post:
-      operationId: createUser
-      description: Create a user account through Djoser.
-      parameters: []
+      tags: [Documents]
+      summary: Создать документ из UTF-8 .txt
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: '#/components/schemas/UserCreate'
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
       responses:
-        '201':
+        "201":
+          description: Документ создан
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
-          description: User created.
-        '400':
-          description: Invalid username or password.
-      tags:
-      - auth
-  /api/v1/users/me/:
+                $ref: "#/components/schemas/TextDocument"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/documents/{id}/chunks/:
+    parameters:
+      - $ref: "#/components/parameters/Id"
     get:
-      operationId: retrieveCurrentUser
-      description: Return the authenticated user's id and username.
-      parameters: []
+      tags: [Documents]
+      summary: Получить страницу chunks документа
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
       responses:
-        '200':
+        "200":
+          description: Chunks и абсолютные offsets
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
-          description: Current user.
-        '401':
-          description: Authentication credentials were not provided or are invalid.
-      tags:
-      - auth
-  /api/v1/users/set_password/:
+                $ref: "#/components/schemas/ChunkPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/labels/:
+    get:
+      tags: [Labels]
+      summary: Получить метки пользователя
+      responses:
+        "200":
+          description: Список меток
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Label"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
-      operationId: setCurrentUserPassword
-      description: Change the authenticated user's password through Djoser.
-      parameters: []
+      tags: [Labels]
+      summary: Создать метку
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PasswordChange'
+              $ref: "#/components/schemas/LabelWrite"
       responses:
-        '204':
-          description: Password changed.
-        '400':
-          description: Invalid current password, mismatched passwords, or password validation failure.
-        '401':
-          description: Authentication credentials were not provided or are invalid.
-      tags:
-      - auth
-  /api/v1/jwt/create/:
-    post:
-      operationId: createTokenObtainPair
-      description: 'Takes a set of user credentials and returns an access and refresh
-        JSON web
-
-        token pair to prove the authentication of those credentials.'
-      parameters: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenObtainPair'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenObtainPair'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenObtainPair'
-      responses:
-        '201':
+        "201":
+          description: Метка создана
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenObtainPair'
-          description: ''
-      tags:
-      - api
-  /api/v1/jwt/refresh/:
-    post:
-      operationId: createTokenRefresh
-      description: 'Takes a refresh type JSON web token and returns an access type
-        JSON web
-
-        token if the refresh token is valid.'
-      parameters: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/labels/{id}/:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Labels]
+      summary: Получить метку
       responses:
-        '201':
+        "200":
+          description: Метка
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenRefresh'
-          description: ''
-      tags:
-      - api
-  /api/v1/jwt/verify/:
-    post:
-      operationId: createTokenVerify
-      description: 'Takes a token and indicates if it is valid.  This view provides
-        no
-
-        information about a token''s fitness for a particular use.'
-      parameters: []
+                $ref: "#/components/schemas/Label"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Labels]
+      summary: Полностью обновить метку
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TokenVerify'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenVerify'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenVerify'
+              $ref: "#/components/schemas/LabelWrite"
       responses:
-        '201':
+        "200":
+          description: Метка обновлена
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenVerify'
-          description: ''
-      tags:
-      - api
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Labels]
+      summary: Частично обновить метку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LabelPatch"
+      responses:
+        "200":
+          description: Метка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Labels]
+      summary: Удалить метку
+      responses:
+        "204":
+          description: Метка удалена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Метка используется annotations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LabelInUseError"
+  /api/v1/annotations/:
+    get:
+      tags: [Annotations]
+      summary: Получить аннотации пользователя
+      parameters:
+        - name: document
+          in: query
+          required: false
+          description: ID документа
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Список аннотаций
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Annotation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Annotations]
+      summary: Создать аннотацию
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnotationWrite"
+      responses:
+        "201":
+          description: Аннотация создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Annotation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/annotations/{id}/:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Annotations]
+      summary: Получить аннотацию
+      responses:
+        "200":
+          description: Аннотация
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Annotation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Annotations]
+      summary: Полностью обновить аннотацию
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnotationWrite"
+      responses:
+        "200":
+          description: Аннотация обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Annotation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Annotations]
+      summary: Частично обновить аннотацию
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnotationPatch"
+      responses:
+        "200":
+          description: Аннотация обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Annotation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Annotations]
+      summary: Удалить аннотацию
+      responses:
+        "204":
+          description: Аннотация удалена
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  responses:
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Unauthorized:
+      description: JWT отсутствует или невалиден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/DetailError"
+    NotFound:
+      description: Объект не существует или недоступен пользователю
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/DetailError"
   schemas:
+    UserCreate:
+      type: object
+      required: [username, password]
+      properties:
+        email:
+          type: string
+        username:
+          type: string
+          maxLength: 150
+        password:
+          type: string
+          format: password
+          writeOnly: true
+    RegisteredUser:
+      type: object
+      required: [email, username, id]
+      properties:
+        email:
+          type: string
+        username:
+          type: string
+          maxLength: 150
+        id:
+          type: integer
+          readOnly: true
+    User:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          maxLength: 150
+    PasswordChange:
+      type: object
+      required: [current_password, new_password, re_new_password]
+      properties:
+        current_password:
+          type: string
+          format: password
+          writeOnly: true
+        new_password:
+          type: string
+          format: password
+          writeOnly: true
+        re_new_password:
+          type: string
+          format: password
+          writeOnly: true
+    TokenObtain:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          format: password
+          writeOnly: true
+    TokenPair:
+      type: object
+      required: [access, refresh]
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+    TokenRefresh:
+      type: object
+      required: [refresh]
+      properties:
+        refresh:
+          type: string
+    AccessToken:
+      type: object
+      required: [access]
+      properties:
+        access:
+          type: string
+          readOnly: true
+    TokenVerify:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          writeOnly: true
     TextDocument:
       type: object
+      required: [id, user, title, slug, original_filename, content, created_at]
       properties:
         id:
           type: integer
           readOnly: true
         user:
-          type: string
+          type: integer
           readOnly: true
         title:
           type: string
           maxLength: 255
-          description: Human-readable title. Falls back to original_filename stem or Новый документ.
         slug:
           type: string
           maxLength: 255
           readOnly: true
-          description: Transliteration-based slug unique for the authenticated user.
         original_filename:
           type: string
           maxLength: 255
-          description: Original uploaded filename, when the document was created from a file.
         content:
           type: string
         created_at:
           type: string
           format: date-time
           readOnly: true
-      required:
-      - content
-    TextDocumentUpload:
+    TextDocumentCreate:
+      type: object
+      required: [content]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        original_filename:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+    TextDocumentPatch:
       type: object
       properties:
-        file:
+        title:
           type: string
-          format: binary
-          description: UTF-8 encoded .txt file.
+          maxLength: 255
+        original_filename:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+    PaginatedDocuments:
+      type: object
+      required: [count, results]
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TextDocument"
+    ChunkPage:
+      type: object
       required:
-      - file
+        - document_id
+        - page
+        - page_size
+        - has_next
+        - has_prev
+        - total_chunks
+        - chunk
+        - chunk_index
+        - chunk_start
+        - chunk_end
+      properties:
+        document_id:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+        total_chunks:
+          type: integer
+        chunk:
+          type: array
+          items:
+            type: string
+        chunk_index:
+          type: integer
+          nullable: true
+        chunk_start:
+          type: integer
+          nullable: true
+        chunk_end:
+          type: integer
+          nullable: true
     Label:
       type: object
-      description: A label owned by the authenticated user. Names are unique per user.
+      required: [id, name, color]
       properties:
         id:
           type: integer
@@ -662,127 +767,97 @@ components:
         color:
           type: string
           maxLength: 7
-      required:
-      - name
-    LabelInUseError:
+          default: "#ffff00"
+    LabelWrite:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        color:
+          type: string
+          maxLength: 7
+          default: "#ffff00"
+    LabelPatch:
       type: object
       properties:
-        detail:
+        name:
           type: string
-          example: 'Нельзя удалить метку «зло»: она используется в 7 аннотациях. Сначала удалите или измените эти аннотации.'
-        code:
+          maxLength: 100
+        color:
           type: string
-          enum:
-          - label_in_use
-        annotations_count:
-          type: integer
-          minimum: 1
-          example: 7
-      required:
-      - detail
-      - code
-      - annotations_count
+          maxLength: 7
     Annotation:
       type: object
-      description: An annotation whose document and label must belong to the authenticated user.
+      required: [id, document, label, start, end, text, created_at]
       properties:
         id:
           type: integer
           readOnly: true
         document:
           type: integer
-          description: ID of a document owned by the authenticated user.
         label:
           type: integer
-          description: ID of a label owned by the authenticated user.
         start:
           type: integer
-          maximum: 9223372036854775807
-          format: int64
           minimum: 0
         end:
           type: integer
-          maximum: 9223372036854775807
-          format: int64
           minimum: 0
         text:
           type: string
+          maxLength: 500
           readOnly: true
         created_at:
           type: string
           format: date-time
           readOnly: true
-      required:
-      - document
-      - label
-      - start
-      - end
-    TokenObtainPair:
+    AnnotationWrite:
       type: object
+      required: [document, label, start, end]
       properties:
-        username:
-          type: string
-          writeOnly: true
-        password:
-          type: string
-          writeOnly: true
-      required:
-      - username
-      - password
-    TokenRefresh:
-      type: object
-      properties:
-        refresh:
-          type: string
-        access:
-          type: string
-          readOnly: true
-      required:
-      - refresh
-    TokenVerify:
-      type: object
-      properties:
-        token:
-          type: string
-          writeOnly: true
-      required:
-      - token
-    UserCreate:
-      type: object
-      properties:
-        username:
-          type: string
-          maxLength: 150
-        password:
-          type: string
-          writeOnly: true
-      required:
-      - username
-      - password
-    User:
-      type: object
-      properties:
-        id:
+        document:
           type: integer
-          readOnly: true
-        username:
-          type: string
-          maxLength: 150
-      required:
-      - username
-    PasswordChange:
+        label:
+          type: integer
+        start:
+          type: integer
+          minimum: 0
+        end:
+          type: integer
+          minimum: 0
+    AnnotationPatch:
       type: object
       properties:
-        current_password:
+        document:
+          type: integer
+        label:
+          type: integer
+        start:
+          type: integer
+          minimum: 0
+        end:
+          type: integer
+          minimum: 0
+    LabelInUseError:
+      type: object
+      required: [detail, code, annotations_count]
+      properties:
+        detail:
           type: string
-          writeOnly: true
-        new_password:
+        code:
           type: string
-          writeOnly: true
-        re_new_password:
+          enum: [label_in_use]
+        annotations_count:
+          type: integer
+          minimum: 1
+    DetailError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
           type: string
-          writeOnly: true
-      required:
-      - current_password
-      - new_password
-      - re_new_password
+    ApiError:
+      type: object
+      additionalProperties: true
