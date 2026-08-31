@@ -22,22 +22,24 @@ Formaslov — full-stack MVP для ручной разметки текстов
 - переносы строк нормализуются при сохранении, чтобы offsets оставались согласованными;
 - имена меток уникальны в рамках пользователя, а используемая метка защищена от удаления;
 - список пользовательских меток кэшируется в Redis и инвалидируется при изменении меток;
+- Celery worker подключается к RabbitMQ и готов к будущим фоновым задачам;
 - PostgreSQL — единственный настроенный database backend;
 - backend API покрыт тестами ownership, валидации, auth и нестандартных ответов.
 
 ## Стек
 
-**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL. Django / DRF сохранены как legacy-реализация на время миграции.
+**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL, Celery. Django / DRF сохранены как legacy-реализация на время миграции.
 
 **Frontend:** React 19, React Router, Axios, Create React App.
 
-**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub, Alembic, Redis.
+**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub, Alembic, Redis, RabbitMQ.
 
 ## Архитектура
 
 ```text
 Browser → React SPA → /api/v1/ → FastAPI → PostgreSQL
                                       └→ Redis cache
+                                      └→ RabbitMQ → Celery worker
 ```
 
 React хранит JWT в `localStorage`, централизованно добавляет access token и один раз пытается обновить его после `401`. Загруженный `.txt` не сохраняется как media-файл: backend декодирует UTF-8 и записывает текст в PostgreSQL.
@@ -70,7 +72,7 @@ demo/                отдельный статический demo-артефа
 
 Для backend нужны Python 3.12, PostgreSQL и переменные из `.env`. Production compose не публикует локальные порты и подключается к внешней Docker-сети, поэтому для разработки сервисы запускаются отдельно.
 
-### 1. PostgreSQL и Redis
+### 1. PostgreSQL, Redis и RabbitMQ
 
 Например, локальную базу можно поднять контейнером:
 
@@ -88,6 +90,14 @@ Redis можно поднять отдельно:
 docker run --name formaslov-redis -p 6379:6379 -d redis:7-alpine
 ```
 
+RabbitMQ для Celery:
+
+```bash
+docker run --name formaslov-rabbitmq \
+  -p 5672:5672 -p 15672:15672 \
+  -d rabbitmq:3.13-management-alpine
+```
+
 ### 2. FastAPI backend
 
 ```bash
@@ -99,6 +109,7 @@ cp .env.example .env
 ```env
 DB_HOST=127.0.0.1
 REDIS_URL=redis://127.0.0.1:6379/0
+CELERY_BROKER_URL=amqp://guest:guest@127.0.0.1:5672//
 DEBUG=True
 ```
 
@@ -120,7 +131,7 @@ http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/redoc
 ```
 
-Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`. Redis подключается через `REDIS_URL`; TTL кэша задаётся `CACHE_TTL_SECONDS`.
+Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`. Redis подключается через `REDIS_URL`; TTL кэша задаётся `CACHE_TTL_SECONDS`. Celery использует RabbitMQ broker из `CELERY_BROKER_URL`.
 
 Baseline migration Alembic создаёт предметные таблицы в пустой БД, а в существующей Django-схеме оставляет их без изменений. Проверить состояние:
 
@@ -128,14 +139,16 @@ Baseline migration Alembic создаёт предметные таблицы в
 alembic current
 ```
 
-Для запуска FastAPI, PostgreSQL и Redis через Docker Compose:
+Для запуска FastAPI, PostgreSQL, Redis, RabbitMQ и Celery worker через Docker Compose:
 
 ```bash
-docker compose build api
-docker compose up -d db redis
+docker compose build api celery-worker
+docker compose up -d db redis rabbitmq
 docker compose run --rm api alembic upgrade head
-docker compose up api
+docker compose up api celery-worker
 ```
+
+Техническая Celery-задача `app.tasks.health.healthcheck` нужна только для проверки инфраструктуры. Пользовательские фоновые задачи пакетного импорта и экспорта будут добавлены отдельно.
 
 ### 3. Legacy Django backend
 
@@ -172,7 +185,7 @@ API использует префикс `/api/v1/`. Основные групп�
 
 ## Deployment
 
-Существующий production workflow пока использует legacy Django image с Gunicorn. Его переключение на FastAPI не входит в этот этап. Локальный FastAPI и PostgreSQL запускаются корневым `docker-compose.yml`.
+Существующий production workflow пока использует legacy Django image с Gunicorn. Его переключение на FastAPI не входит в этот этап. Локальная FastAPI-инфраструктура запускается корневым `docker-compose.yml`.
 
 TLS и конфигурация внешнего reverse proxy находятся вне этого репозитория.
 

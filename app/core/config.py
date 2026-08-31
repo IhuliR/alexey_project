@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     )
     redis_url: str | None = None
     cache_ttl_seconds: int = 300
+    celery_broker_url: str = 'amqp://guest:guest@localhost:5672//'
     database_url: str | None = None
     postgres_user: str = 'formaslov'
     postgres_password: str = 'formaslov'
