@@ -8,6 +8,12 @@ from sqlalchemy.engine import URL
 class Settings(BaseSettings):
     app_name: str = 'Formaslov API'
     debug: bool = True
+    secret_key: str
+    jwt_access_token_lifetime: int = 86400
+    jwt_refresh_token_lifetime: int = 86400
+    cors_allowed_origins: str = (
+        'http://localhost:3000,http://127.0.0.1:3000'
+    )
     database_url: str | None = None
     postgres_user: str = 'formaslov'
     postgres_password: str = 'formaslov'
@@ -45,6 +51,14 @@ class Settings(BaseSettings):
             database=self.postgres_db,
         )
         return url.render_as_string(hide_password=False)
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(',')
+            if origin.strip()
+        ]
 
 
 @lru_cache
