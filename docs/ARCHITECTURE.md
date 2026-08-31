@@ -10,20 +10,21 @@ Formaslov — MVP для ручной разметки текстов. Авто�
 Browser
   └─ React SPA
        └─ REST /api/v1/
-            └─ Django REST Framework
+            └─ FastAPI
                  └─ PostgreSQL
 ```
 
-В production-структуре запросы принимает Nginx gateway. Он отдаёт собранный React frontend, проксирует `/api/` и `/redoc/` в Gunicorn/Django и подключается к внешней Docker-сети для upstream reverse proxy.
+FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Django backend сохранён в `backend/` как legacy-реализация и источник существующих migrations. Текущий production compose пока продолжает запускать legacy Django; переключение deployment выполняется отдельно.
 
-## Backend applications
+## Backend modules
 
-- `config` — Django settings, корневой URL routing и WSGI/ASGI entrypoints;
-- `users` — кастомная модель `MyUser` на базе `AbstractUser`;
-- `core` — модели документов, меток и аннотаций, migrations и demo seed command;
-- `api` — serializers, viewsets, permissions, router и API tests.
+- `app/api` — FastAPI routers, auth dependencies и формат ошибок;
+- `app/models` — SQLAlchemy-модели существующих предметных таблиц;
+- `app/schemas` — Pydantic-схемы API;
+- `app/services` — небольшие функции обработки документов;
+- `backend/` — legacy Django models, migrations и тесты.
 
-Локально `python-dotenv` загружает `.env` из корня репозитория; в containers значения передаются окружением. `SECRET_KEY` обязателен; `DEBUG`, hosts, CORS/CSRF, параметры PostgreSQL, static/media paths и security flags задаются environment. SQLite fallback отсутствует.
+Настройки FastAPI читаются из environment и `.env` через `pydantic-settings`. `SECRET_KEY`, CORS и параметры PostgreSQL сохраняют существующие имена переменных. SQLite fallback отсутствует.
 
 ## Модели и связи
 
@@ -58,7 +59,7 @@ MyUser 1 ─── * TextDocument 1 ─── * Annotation * ─── 1 Label *
 
 ## API layer
 
-`DefaultRouter` публикует CRUD для:
+FastAPI routers публикуют CRUD для:
 
 - `/api/v1/documents/`;
 - `/api/v1/labels/`;
@@ -69,30 +70,30 @@ MyUser 1 ─── * TextDocument 1 ─── * Annotation * ─── 1 Label *
 - `POST /api/v1/documents/upload/` — импорт UTF-8 `.txt`;
 - `GET /api/v1/documents/{id}/chunks/` — абзацы и offsets для текущей страницы.
 
-Djoser и Simple JWT добавляют регистрацию, текущего пользователя, смену пароля и операции с JWT. Подробный контракт находится в [API guide](API_GUIDE.md); статическая OpenAPI schema отдается через ReDoc на `/redoc/`.
+FastAPI реализует регистрацию, текущего пользователя, смену пароля и совместимые JWT endpoints. Подробный контракт находится в [API guide](API_GUIDE.md); OpenAPI schema и ReDoc генерируются автоматически.
 
 ### Documents
 
-`TextDocumentViewSet.get_queryset()` фильтрует документы по `request.user`, а `perform_create()` назначает владельца. Из-за `MultiPartParser` create/update принимают `multipart/form-data`. Переносы `CRLF`/`CR` нормализуются в `LF`.
+Document router фильтрует документы по текущему пользователю и назначает владельца на backend. Create/update принимают `multipart/form-data`. Переносы `CRLF`/`CR` нормализуются в `LF`.
 
 `chunks` делит текст по пустым строкам и возвращает абсолютные `chunk_start`/`chunk_end`. Frontend запрашивает один chunk на страницу, поэтому offsets однозначно относятся к единственному элементу массива `chunk`.
 
 ### Labels
 
-`LabelViewSet` фильтрует queryset и назначает владельца на backend. При удалении используемой метки перехватывается `ProtectedError` и возвращается `409 Conflict` с кодом `label_in_use`.
+Label router фильтрует запросы по владельцу. Перед удалением используемой метки проверяются связанные аннотации и возвращается `409 Conflict` с кодом `label_in_use`.
 
 ### Annotations
 
-`AnnotationViewSet` показывает только аннотации документов текущего пользователя и поддерживает фильтр `?document=<id>`. Serializer ограничивает selectable documents и labels владельцем, повторно проверяет ownership, проверяет offsets и вычисляет `text` по содержимому документа.
+Annotation router показывает только аннотации документов текущего пользователя и поддерживает фильтр `?document=<id>`. Валидация проверяет ownership документа и метки, offsets и вычисляет `text` по содержимому документа.
 
 ## Authentication и authorization
 
-DRF по умолчанию использует `JWTAuthentication` и `IsAuthenticated`. Клиент передаёт access token как `Authorization: Bearer <token>`.
+FastAPI dependency проверяет JWT access token и загружает активного пользователя. Клиент передаёт access token как `Authorization: Bearer <token>`.
 
-Object-level `IsAuthor` поддерживает оба варианта ownership:
+Явные ownership-проверки поддерживают оба варианта:
 
-- `obj.user` для документов и меток;
-- `obj.document.user` для аннотаций.
+- `user_id` для документов и меток;
+- владельца документа для аннотаций.
 
 Фильтрация queryset скрывает чужие объекты до object-level проверки: обращение к чужому ID обычно возвращает `404`, а не раскрывает существование объекта.
 
@@ -115,7 +116,7 @@ React routes:
 
 ## Infrastructure и deployment
 
-В репозитории есть три image definition:
+В репозитории есть FastAPI image для локальной миграционной среды и три legacy production image:
 
 - backend: Python 3.12, зависимости, Gunicorn;
 - frontend: Node 20, `npm ci`, production build;
@@ -123,7 +124,9 @@ React routes:
 
 `infra/docker-compose.yml` рассчитан на deployment: использует опубликованные images, именованные volumes и внешнюю сеть `web`; локальные host ports не публикуются.
 
-GitHub Actions при push в `master`:
+Существующий GitHub Actions workflow при push в `master` пока проверяет и разворачивает legacy Django backend. Переключение production CI/CD на FastAPI не входит в текущий этап.
+
+Legacy workflow:
 
 1. запускает flake8 и Django tests с PostgreSQL 16;
 2. запускает frontend tests;
@@ -137,9 +140,9 @@ GitHub Actions при push в `master`:
 ## Технические ограничения
 
 - редактирование `TextDocument.content` не пересчитывает существующие offsets и `Annotation.text`;
-- `Annotation.text` ограничен 500 символами, а serializer заранее не проверяет длину вычисленного фрагмента;
+- `Annotation.text` ограничен 500 символами, а API заранее не проверяет длину вычисленного фрагмента;
 - пересекающиеся аннотации разрешены backend, но frontend при отрисовке принимает только непересекающиеся segments;
 - `chunks` основан на разделении пустыми строками, а не на фиксированном размере;
 - при `page_size > 1` API возвращает несколько chunks, но `chunk_start`, `chunk_end` и `chunk_index` становятся `null`;
-- OpenAPI schema хранится статически и должна обновляться вручную вместе с API;
+- FastAPI OpenAPI schema генерируется автоматически; статическая schema остаётся только в legacy backend;
 - production compose зависит от заранее созданной внешней Docker-сети `web` и внешнего reverse proxy.
