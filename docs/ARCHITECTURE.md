@@ -12,16 +12,18 @@ Browser
        └─ REST /api/v1/
             └─ FastAPI
                  └─ PostgreSQL
+                 └─ Redis cache
 ```
 
-FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Django backend сохранён в `backend/` как legacy-реализация и источник существующих migrations. Текущий production compose пока продолжает запускать legacy Django; переключение deployment выполняется отдельно.
+FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Redis используется как cache layer для списка пользовательских меток; PostgreSQL остаётся source of truth. Django backend сохранён в `backend/` как legacy-реализация и источник существующих migrations. Текущий production compose пока продолжает запускать legacy Django; переключение deployment выполняется отдельно.
 
 ## Backend modules
 
 - `app/api` — FastAPI routers, auth dependencies и формат ошибок;
+- `app/core/cache.py` — простой Redis JSON-cache helper;
 - `app/models` — SQLAlchemy-модели существующих предметных таблиц;
 - `app/schemas` — Pydantic-схемы API;
-- `app/services` — небольшие функции обработки документов;
+- `app/services` — небольшие функции обработки документов и cache-сценариев;
 - `backend/` — legacy Django models, migrations и тесты.
 
 Настройки FastAPI читаются из environment и `.env` через `pydantic-settings`. `SECRET_KEY`, CORS и параметры PostgreSQL сохраняют существующие имена переменных. SQLite fallback отсутствует.
@@ -82,6 +84,8 @@ Document router фильтрует документы по текущему по
 
 Label router фильтрует запросы по владельцу. Перед удалением используемой метки проверяются связанные аннотации и возвращается `409 Conflict` с кодом `label_in_use`.
 
+`GET /api/v1/labels/` читает список меток из Redis по ключу текущего пользователя. При cache miss данные загружаются из PostgreSQL и сохраняются с TTL. Создание, изменение и удаление меток удаляют cache key этого пользователя. Если Redis временно недоступен, API логирует warning и продолжает читать данные из PostgreSQL.
+
 ### Annotations
 
 Annotation router показывает только аннотации документов текущего пользователя и поддерживает фильтр `?document=<id>`. Валидация проверяет ownership документа и метки, offsets и вычисляет `text` по содержимому документа.
@@ -112,7 +116,7 @@ React routes:
 
 ## Хранение данных
 
-Основное хранилище — PostgreSQL. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. Docker volumes используются для PostgreSQL, Django static и media directory.
+Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. Docker volumes используются для PostgreSQL, Django static и media directory.
 
 ## Infrastructure и deployment
 

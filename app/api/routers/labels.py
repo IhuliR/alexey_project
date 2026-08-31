@@ -9,6 +9,12 @@ from app.api.dependencies import CurrentUser, DatabaseSession
 from app.api.errors import ApiValidationError
 from app.models import Annotation, Label
 from app.schemas import LabelPatch, LabelRead, LabelWrite
+from app.services.labels import (
+    cache_labels,
+    get_cached_labels,
+    invalidate_labels_cache,
+    serialize_labels,
+)
 
 
 router = APIRouter(prefix='/api/v1/labels', tags=['Labels'])
@@ -68,8 +74,15 @@ async def ensure_unique_name(
 
 
 @router.get('/', response_model=list[LabelRead])
-async def list_labels(user: CurrentUser, db: DatabaseSession) -> list[Label]:
-    return list(
+async def list_labels(
+    user: CurrentUser,
+    db: DatabaseSession,
+) -> list[dict]:
+    cached_labels = await get_cached_labels(user.id)
+    if cached_labels is not None:
+        return cached_labels
+
+    labels = list(
         (
             await db.scalars(
                 select(Label)
@@ -78,6 +91,9 @@ async def list_labels(user: CurrentUser, db: DatabaseSession) -> list[Label]:
             )
         ).all()
     )
+    payload = serialize_labels(labels)
+    await cache_labels(user.id, payload)
+    return payload
 
 
 @router.post('/', response_model=LabelRead, status_code=201)
@@ -103,6 +119,7 @@ async def create_label(
             }
         ) from None
     await db.refresh(label)
+    await invalidate_labels_cache(user.id)
     return label
 
 
@@ -142,6 +159,7 @@ async def update_label(
             }
         ) from None
     await db.refresh(label)
+    await invalidate_labels_cache(label.user_id)
     return label
 
 
@@ -200,4 +218,5 @@ async def delete_label(
 
     await db.delete(label)
     await db.commit()
+    await invalidate_labels_cache(label.user_id)
     return Response(status_code=204)
