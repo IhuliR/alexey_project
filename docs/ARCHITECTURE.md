@@ -13,9 +13,10 @@ Browser
             └─ FastAPI
                  └─ PostgreSQL
                  └─ Redis cache
+                 └─ RabbitMQ ─ Celery worker
 ```
 
-FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Redis используется как cache layer для списка пользовательских меток; PostgreSQL остаётся source of truth. Django backend сохранён в `backend/` как legacy-реализация и источник существующих migrations. Текущий production compose пока продолжает запускать legacy Django; переключение deployment выполняется отдельно.
+FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Redis используется как cache layer для списка пользовательских меток; PostgreSQL остаётся source of truth. RabbitMQ используется как broker Celery, а отдельный worker выполняет фоновые задачи. Django backend сохранён в `backend/` как legacy-реализация и источник существующих migrations. Текущий production compose пока продолжает запускать legacy Django; переключение deployment выполняется отдельно.
 
 ## Backend modules
 
@@ -24,9 +25,10 @@ FastAPI работает с PostgreSQL асинхронно через SQLAlchem
 - `app/models` — SQLAlchemy-модели существующих предметных таблиц;
 - `app/schemas` — Pydantic-схемы API;
 - `app/services` — небольшие функции обработки документов и cache-сценариев;
+- `app/tasks` — Celery application и фоновые задачи;
 - `backend/` — legacy Django models, migrations и тесты.
 
-Настройки FastAPI читаются из environment и `.env` через `pydantic-settings`. `SECRET_KEY`, CORS и параметры PostgreSQL сохраняют существующие имена переменных. SQLite fallback отсутствует.
+Настройки FastAPI читаются из environment и `.env` через `pydantic-settings`. `SECRET_KEY`, CORS, параметры PostgreSQL, `REDIS_URL` и `CELERY_BROKER_URL` сохраняют плоскую env-конфигурацию. SQLite fallback отсутствует.
 
 ## Модели и связи
 
@@ -118,6 +120,12 @@ React routes:
 
 Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. Docker volumes используются для PostgreSQL, Django static и media directory.
 
+## Фоновые задачи
+
+Celery настроен с RabbitMQ broker и одним worker-контейнером. Подготовлены очереди `imports` и `exports` для следующих этапов, а также стандартная очередь `default` для технических задач. Сейчас в коде есть только техническая задача `app.tasks.health.healthcheck`, которая проверяет прохождение сообщения через broker и выполнение worker-ом.
+
+Result backend не настроен: текущему этапу достаточно доставки и выполнения задачи. Таблицы задач или пользовательские job-модели не добавлены.
+
 ## Infrastructure и deployment
 
 В репозитории есть FastAPI image для локальной миграционной среды и три legacy production image:
@@ -127,6 +135,8 @@ React routes:
 - gateway: Nginx с template конфигурации.
 
 `infra/docker-compose.yml` рассчитан на deployment: использует опубликованные images, именованные volumes и внешнюю сеть `web`; локальные host ports не публикуются.
+
+Корневой `docker-compose.yml` используется для локальной FastAPI-инфраструктуры и поднимает `api`, `db`, `redis`, `rabbitmq` и `celery-worker`.
 
 Существующий GitHub Actions workflow при push в `master` пока проверяет и разворачивает legacy Django backend. Переключение production CI/CD на FastAPI не входит в текущий этап.
 
@@ -149,4 +159,6 @@ Legacy workflow:
 - `chunks` основан на разделении пустыми строками, а не на фиксированном размере;
 - при `page_size > 1` API возвращает несколько chunks, но `chunk_start`, `chunk_end` и `chunk_index` становятся `null`;
 - FastAPI OpenAPI schema генерируется автоматически; статическая schema остаётся только в legacy backend;
+- реальные фоновые бизнес-задачи импорта и экспорта ещё не реализованы;
+- Celery result backend не настроен;
 - production compose зависит от заранее созданной внешней Docker-сети `web` и внешнего reverse proxy.
