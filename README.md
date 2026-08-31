@@ -15,10 +15,10 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 ## Backend: ключевые решения
 
-- REST API на FastAPI с JWT-аутентификацией;
+- REST API на Django REST Framework, Djoser и Simple JWT;
 - ownership документов, меток и аннотаций ограничено текущим пользователем;
 - backend не доверяет тексту выделения от клиента: `text` вычисляется по `content[start:end]`;
-- backend проверяет принадлежность документа и метки, диапазон offsets и непустое выделение;
+- serializer проверяет принадлежность документа и метки, диапазон offsets и непустое выделение;
 - переносы строк нормализуются при сохранении, чтобы offsets оставались согласованными;
 - имена меток уникальны в рамках пользователя, а используемая метка защищена от удаления;
 - PostgreSQL — единственный настроенный database backend;
@@ -26,36 +26,26 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 ## Стек
 
-**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL. Django / DRF сохранены как legacy-реализация на время миграции.
+**Backend:** Python 3.12, Django 6, Django REST Framework, Djoser, Simple JWT, PostgreSQL, Gunicorn.
 
 **Frontend:** React 19, React Router, Axios, Create React App.
 
-**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub, Alembic.
+**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub.
 
 ## Архитектура
 
 ```text
-Browser → React SPA → /api/v1/ → FastAPI → PostgreSQL
+Browser → React SPA → /api/v1/ → Nginx → Gunicorn → Django/DRF → PostgreSQL
 ```
 
 React хранит JWT в `localStorage`, централизованно добавляет access token и один раз пытается обновить его после `401`. Загруженный `.txt` не сохраняется как media-файл: backend декодирует UTF-8 и записывает текст в PostgreSQL.
 
 Подробнее: [архитектура](docs/ARCHITECTURE.md).
 
-### Миграция backend на FastAPI
-
-Проект постепенно переводится с Django / DRF на FastAPI в рамках подготовки к пакетной обработке исследовательских материалов, фоновым задачам и будущим I/O-bound интеграциям.
-
-Основной пользовательский API перенесён на FastAPI с сохранением существующих URL и JSON-контрактов. Django / DRF backend пока остаётся в репозитории как legacy-реализация, а SQLAlchemy-модели совместимы с созданной Django схемой PostgreSQL.
-
-Подробнее о мотивации и планируемой архитектуре: [развитие backend](docs/FASTAPI_REFACTOR_BRIEF.md).
-
 ## Структура репозитория
 
 ```text
-backend/             legacy Django backend, migrations и тесты
-app/                 основной FastAPI backend
-alembic/             миграции SQLAlchemy / Alembic
+backend/             Django project, приложения api/core/users, тесты
 frontend/            React SPA и frontend-тесты
 infra/               production Docker Compose
 nginx/               gateway image и Nginx template
@@ -80,7 +70,7 @@ docker run --name formaslov-postgres \
   -p 5432:5432 -d postgres:16-alpine
 ```
 
-### 2. FastAPI backend
+### 2. Backend
 
 ```bash
 cp .env.example .env
@@ -96,48 +86,17 @@ DEBUG=True
 Затем:
 
 ```bash
+cd backend
 python -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
 ```
 
-API будет доступен по адресу `http://127.0.0.1:8000/api/v1/`. Служебные endpoints и документация:
+API будет доступен по адресу `http://127.0.0.1:8000/api/v1/`, ReDoc — `http://127.0.0.1:8000/redoc/`.
 
-```text
-http://127.0.0.1:8000/health
-http://127.0.0.1:8000/docs
-http://127.0.0.1:8000/redoc
-```
-
-Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`.
-
-Baseline migration Alembic создаёт предметные таблицы в пустой БД, а в существующей Django-схеме оставляет их без изменений. Проверить состояние:
-
-```bash
-alembic current
-```
-
-Для запуска FastAPI и PostgreSQL через Docker Compose:
-
-```bash
-docker compose build api
-docker compose up -d db
-docker compose run --rm api alembic upgrade head
-docker compose up api
-```
-
-### 3. Legacy Django backend
-
-Django-код пока не удалён. Его тесты и migrations можно запускать отдельно:
-
-```bash
-cd backend
-python manage.py test
-```
-
-### 4. Frontend
+### 3. Frontend
 
 Создайте `frontend/.env`:
 
@@ -159,11 +118,11 @@ npm start
 
 API использует префикс `/api/v1/`. Основные группы: auth, documents, labels и annotations. Документы принимают `multipart/form-data`; для меток и аннотаций frontend использует JSON. Все пользовательские ресурсы доступны только владельцу.
 
-Полный контракт и примеры: [API guide](docs/API_GUIDE.md). OpenAPI schema доступна на `/openapi.json`, Swagger UI — на `/docs`, ReDoc — на `/redoc`.
+Полный контракт и примеры: [API guide](docs/API_GUIDE.md). Интерактивное представление статической OpenAPI schema доступно на `/redoc/` при запущенном backend.
 
 ## Deployment
 
-Существующий production workflow пока использует legacy Django image с Gunicorn. Его переключение на FastAPI не входит в этот этап. Локальный FastAPI и PostgreSQL запускаются корневым `docker-compose.yml`.
+Workflow для push в `master` запускает backend и frontend tests, собирает три Docker image (backend, frontend, gateway), публикует их в Docker Hub и обновляет удалённый Docker Compose host по SSH. Compose запускает PostgreSQL, Gunicorn и внутренний Nginx gateway; frontend image копирует production build в общий static volume. Gateway подключён к внешней сети `web`, рассчитанной на внешний reverse proxy.
 
 TLS и конфигурация внешнего reverse proxy находятся вне этого репозитория.
 

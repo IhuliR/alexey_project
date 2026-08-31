@@ -346,7 +346,7 @@ Create request:
 | `404` | resource не существует или не принадлежит пользователю |
 | `409` | label используется annotations |
 
-Validation errors сгруппированы по полям в совместимом с прежним API формате:
+DRF validation errors обычно сгруппированы по полям:
 
 ```json
 {
@@ -372,4 +372,4 @@ Frontend зависит от следующих деталей:
 - delete занятой label возвращает `code: label_in_use`;
 - export JSON строится в `frontend/src/utils/export.js`; backend export endpoint отсутствует.
 
-Актуальная OpenAPI schema генерируется FastAPI на `/openapi.json`. При изменении контракта нужно синхронно обновить backend tests, frontend consumer/tests и этот guide; `backend/static/schema.yaml` сохранён для legacy Django backend.
+При изменении контракта нужно синхронно обновить backend tests, frontend consumer/tests, этот guide и `backend/static/schema.yaml`.
