@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = (
         'http://localhost:3000,http://127.0.0.1:3000'
     )
+    redis_url: str | None = None
+    cache_ttl_seconds: int = 300
     database_url: str | None = None
     postgres_user: str = 'formaslov'
     postgres_password: str = 'formaslov'

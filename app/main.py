@@ -11,6 +11,7 @@ from app.api.errors import (
     request_validation_error_handler,
 )
 from app.api.routers import annotations, auth, documents, labels
+from app.core.cache import close_redis
 from app.core.config import get_settings
 from app.db.session import close_db
 
@@ -18,6 +19,7 @@ from app.db.session import close_db
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
+    await close_redis()
     await close_db()
 
 

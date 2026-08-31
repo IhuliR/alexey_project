@@ -21,6 +21,7 @@ Formaslov — full-stack MVP для ручной разметки текстов
 - backend проверяет принадлежность документа и метки, диапазон offsets и непустое выделение;
 - переносы строк нормализуются при сохранении, чтобы offsets оставались согласованными;
 - имена меток уникальны в рамках пользователя, а используемая метка защищена от удаления;
+- список пользовательских меток кэшируется в Redis и инвалидируется при изменении меток;
 - PostgreSQL — единственный настроенный database backend;
 - backend API покрыт тестами ownership, валидации, auth и нестандартных ответов.
 
@@ -30,12 +31,13 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 **Frontend:** React 19, React Router, Axios, Create React App.
 
-**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub, Alembic.
+**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub, Alembic, Redis.
 
 ## Архитектура
 
 ```text
 Browser → React SPA → /api/v1/ → FastAPI → PostgreSQL
+                                      └→ Redis cache
 ```
 
 React хранит JWT в `localStorage`, централизованно добавляет access token и один раз пытается обновить его после `401`. Загруженный `.txt` не сохраняется как media-файл: backend декодирует UTF-8 и записывает текст в PostgreSQL.
@@ -68,7 +70,7 @@ demo/                отдельный статический demo-артефа
 
 Для backend нужны Python 3.12, PostgreSQL и переменные из `.env`. Production compose не публикует локальные порты и подключается к внешней Docker-сети, поэтому для разработки сервисы запускаются отдельно.
 
-### 1. PostgreSQL
+### 1. PostgreSQL и Redis
 
 Например, локальную базу можно поднять контейнером:
 
@@ -78,6 +80,12 @@ docker run --name formaslov-postgres \
   -e POSTGRES_USER=django_user \
   -e POSTGRES_PASSWORD=some_password \
   -p 5432:5432 -d postgres:16-alpine
+```
+
+Redis можно поднять отдельно:
+
+```bash
+docker run --name formaslov-redis -p 6379:6379 -d redis:7-alpine
 ```
 
 ### 2. FastAPI backend
@@ -90,6 +98,7 @@ cp .env.example .env
 
 ```env
 DB_HOST=127.0.0.1
+REDIS_URL=redis://127.0.0.1:6379/0
 DEBUG=True
 ```
 
@@ -111,7 +120,7 @@ http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/redoc
 ```
 
-Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`.
+Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`. Redis подключается через `REDIS_URL`; TTL кэша задаётся `CACHE_TTL_SECONDS`.
 
 Baseline migration Alembic создаёт предметные таблицы в пустой БД, а в существующей Django-схеме оставляет их без изменений. Проверить состояние:
 
@@ -119,11 +128,11 @@ Baseline migration Alembic создаёт предметные таблицы в
 alembic current
 ```
 
-Для запуска FastAPI и PostgreSQL через Docker Compose:
+Для запуска FastAPI, PostgreSQL и Redis через Docker Compose:
 
 ```bash
 docker compose build api
-docker compose up -d db
+docker compose up -d db redis
 docker compose run --rm api alembic upgrade head
 docker compose up api
 ```

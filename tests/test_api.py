@@ -2,6 +2,7 @@ import asyncio
 import os
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -9,9 +10,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.main import app
+from app.services.labels import labels_cache_key
 
 
 TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL')
+TEST_REDIS_URL = os.getenv('TEST_REDIS_URL')
 pytestmark = pytest.mark.skipif(
     not TEST_DATABASE_URL,
     reason='TEST_DATABASE_URL is not configured',
@@ -35,11 +38,33 @@ def clean_database() -> None:
     asyncio.run(delete_test_data())
 
 
+def clean_labels_cache() -> None:
+    if not TEST_REDIS_URL:
+        return
+
+    client = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+    for key in client.scan_iter(match='user:*:labels'):
+        client.delete(key)
+    client.close()
+
+
+def run_database_statement(statement: str, **params: object) -> None:
+    async def execute_statement() -> None:
+        engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
+        async with engine.begin() as connection:
+            await connection.execute(text(statement), params)
+        await engine.dispose()
+
+    asyncio.run(execute_statement())
+
+
 @pytest.fixture(autouse=True)
 def empty_database() -> None:
+    clean_labels_cache()
     clean_database()
     yield
     clean_database()
+    clean_labels_cache()
 
 
 @pytest.fixture
@@ -100,6 +125,16 @@ def create_label(
     )
     assert response.status_code == 201
     return response.json()
+
+
+@pytest.fixture
+def redis_client() -> redis.Redis:
+    if not TEST_REDIS_URL:
+        pytest.skip('TEST_REDIS_URL is not configured')
+
+    client = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+    yield client
+    client.close()
 
 
 def test_authentication_and_account(client: TestClient) -> None:
@@ -278,6 +313,101 @@ def test_labels_are_isolated_and_unique(client: TestClient) -> None:
         f"/api/v1/labels/{foreign_label['id']}/",
         headers=owner,
     ).status_code == 404
+
+
+def test_labels_cache_hit_miss_invalidation_and_isolation(
+    client: TestClient,
+    redis_client: redis.Redis,
+) -> None:
+    owner = auth_headers(register_and_login(client, 'cached-label-owner'))
+    other = auth_headers(register_and_login(client, 'cached-other-owner'))
+    owner_id = client.get('/api/v1/users/me/', headers=owner).json()['id']
+    other_id = client.get('/api/v1/users/me/', headers=other).json()['id']
+
+    label = create_label(client, owner, 'первичная')
+    owner_key = labels_cache_key(owner_id)
+    assert redis_client.get(owner_key) is None
+
+    first_response = client.get('/api/v1/labels/', headers=owner)
+    assert first_response.status_code == 200
+    assert first_response.json() == [label]
+    assert redis_client.get(owner_key) is not None
+    assert redis_client.ttl(owner_key) > 0
+
+    run_database_statement(
+        'UPDATE core_label SET name = :name WHERE id = :label_id',
+        name='изменена без invalidation',
+        label_id=label['id'],
+    )
+    cached_response = client.get('/api/v1/labels/', headers=owner)
+    assert cached_response.status_code == 200
+    assert cached_response.json() == [label]
+
+    other_label = create_label(client, other, 'чужая')
+    other_response = client.get('/api/v1/labels/', headers=other)
+    assert other_response.status_code == 200
+    assert other_response.json() == [other_label]
+    assert owner_key != labels_cache_key(other_id)
+
+    patch_response = client.patch(
+        f"/api/v1/labels/{label['id']}/",
+        headers=owner,
+        json={'name': 'обновленная'},
+    )
+    assert patch_response.status_code == 200
+    assert redis_client.get(owner_key) is None
+    assert client.get('/api/v1/labels/', headers=owner).json() == [
+        patch_response.json()
+    ]
+
+    created = create_label(client, owner, 'новая')
+    assert redis_client.get(owner_key) is None
+    labels_after_create = client.get('/api/v1/labels/', headers=owner).json()
+    assert [item['id'] for item in labels_after_create] == [
+        label['id'],
+        created['id'],
+    ]
+
+    delete_response = client.delete(
+        f"/api/v1/labels/{created['id']}/",
+        headers=owner,
+    )
+    assert delete_response.status_code == 204
+    assert redis_client.get(owner_key) is None
+    assert client.get('/api/v1/labels/', headers=owner).json() == [
+        patch_response.json()
+    ]
+
+
+def test_labels_list_works_when_redis_is_unavailable(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import cache
+
+    class BrokenRedis:
+        async def get(self, key: str) -> None:
+            raise OSError('redis is unavailable')
+
+        async def delete(self, key: str) -> None:
+            raise OSError('redis is unavailable')
+
+        async def set(
+            self,
+            key: str,
+            value: str,
+            ex: int,
+        ) -> None:
+            raise OSError('redis is unavailable')
+
+    monkeypatch.setattr(cache, 'get_redis_client', lambda: BrokenRedis())
+
+    headers = auth_headers(register_and_login(client, 'broken-redis-owner'))
+    label = create_label(client, headers, 'без redis')
+    response = client.get('/api/v1/labels/', headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == [label]
 
 
 def test_annotations_validate_offsets_and_ownership(
