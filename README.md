@@ -26,11 +26,11 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 ## Стек
 
-**Backend:** Python 3.12, Django 6, Django REST Framework, Djoser, Simple JWT, PostgreSQL, Gunicorn.
+**Backend:** Python 3.12, Django 6, Django REST Framework, FastAPI (миграция backend), Djoser, Simple JWT, PostgreSQL, SQLAlchemy 2, asyncpg, Gunicorn.
 
 **Frontend:** React 19, React Router, Axios, Create React App.
 
-**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub.
+**Infrastructure:** Docker, Docker Compose, Nginx, GitHub Actions, Docker Hub, Alembic.
 
 ## Архитектура
 
@@ -42,10 +42,20 @@ React хранит JWT в `localStorage`, централизованно доб�
 
 Подробнее: [архитектура](docs/ARCHITECTURE.md).
 
+### Миграция backend на FastAPI
+
+Проект постепенно переводится с Django / DRF на FastAPI в рамках подготовки к пакетной обработке исследовательских материалов, фоновым задачам и будущим I/O-bound интеграциям.
+
+На текущем этапе добавлена базовая FastAPI-инфраструктура с асинхронным подключением к PostgreSQL через SQLAlchemy 2 и `asyncpg`, Alembic и автоматически генерируемой OpenAPI-документацией. Основной пользовательский API пока продолжает работать на Django / DRF.
+
+Подробнее о мотивации и планируемой архитектуре: [развитие backend](docs/FASTAPI_REFACTOR_BRIEF.md).
+
 ## Структура репозитория
 
 ```text
-backend/             Django project, приложения api/core/users, тесты
+backend/             текущий Django backend, приложения api/core/users, тесты
+app/                 новая FastAPI-часть backend
+alembic/             миграции SQLAlchemy / Alembic
 frontend/            React SPA и frontend-тесты
 infra/               production Docker Compose
 nginx/               gateway image и Nginx template
@@ -95,6 +105,39 @@ python manage.py runserver
 ```
 
 API будет доступен по адресу `http://127.0.0.1:8000/api/v1/`, ReDoc — `http://127.0.0.1:8000/redoc/`.
+
+### FastAPI: инфраструктура миграции
+
+Новая FastAPI-часть пока не заменяет основной Django / DRF API и используется как основа для дальнейшей миграции backend.
+
+Для локального запуска из корня репозитория:
+
+```bash
+pip install -r backend/requirements.txt
+uvicorn app.main:app --reload
+```
+
+Доступные служебные endpoints:
+
+```text
+http://127.0.0.1:8000/health
+http://127.0.0.1:8000/docs
+http://127.0.0.1:8000/redoc
+```
+
+Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`.
+
+Проверить состояние Alembic:
+
+```bash
+alembic current
+```
+
+Для запуска FastAPI и PostgreSQL через Docker Compose:
+
+```bash
+docker compose up --build
+```
 
 ### 3. Frontend
 
