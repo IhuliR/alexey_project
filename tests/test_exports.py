@@ -260,6 +260,7 @@ def test_pending_export_cannot_be_downloaded(
 def test_failed_export_status_and_download(
     client: TestClient,
     queued_exports: list[dict],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     headers = auth_headers(register_and_login(client, 'export-failed-user'))
     document = create_document(client, headers)
@@ -273,6 +274,7 @@ def test_failed_export_status_and_download(
     )
     assert status_response.json()['status'] == 'failed'
     assert status_response.json()['error'] == 'Unsupported export format.'
+    assert f'Export job {job_id} failed' in caplog.text
 
     download_response = client.get(
         f'/api/v1/exports/{job_id}/download/',

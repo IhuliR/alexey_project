@@ -20,4 +20,17 @@ def test_fastapi_docs() -> None:
     response = client.get('/openapi.json')
 
     assert response.status_code == 200
-    assert response.json()['info']['title'] == 'Formaslov API'
+    schema = response.json()
+    assert schema['info']['title'] == 'Formaslov API'
+
+    import_operation = schema['paths']['/api/v1/imports/']['post']
+    assert 'multipart/form-data' in import_operation['requestBody']['content']
+    assert '400' in import_operation['responses']
+    assert '422' not in import_operation['responses']
+
+    export_operation = schema['paths']['/api/v1/exports/']['post']
+    assert export_operation['responses']['202']['content'][
+        'application/json'
+    ]['schema']['$ref'].endswith('/ExportJobRead')
+    assert '400' in export_operation['responses']
+    assert '422' not in export_operation['responses']

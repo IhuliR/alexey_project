@@ -4,6 +4,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from app.api.errors import (
     ApiValidationError,
@@ -57,6 +58,31 @@ app.include_router(imports.router)
 app.include_router(exports.router)
 app.include_router(labels.router)
 app.include_router(annotations.router)
+
+
+def custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    for path in schema['paths'].values():
+        for operation in path.values():
+            responses = operation.get('responses', {})
+            if responses.pop('422', None) is not None:
+                responses.setdefault(
+                    '400',
+                    {'description': 'Validation Error'},
+                )
+
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi
 
 
 @app.get('/health')

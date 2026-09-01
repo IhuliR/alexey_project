@@ -182,6 +182,7 @@ async def generate_export_file(export_id: int) -> Path:
 
 
 async def mark_export_failed(export_id: int, error: str) -> None:
+    logger.warning('Export job %s failed: %s', export_id, error)
     async with async_session() as db:
         job = await db.get(ExportJob, export_id)
         if job is None:
