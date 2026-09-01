@@ -13,7 +13,6 @@ celery_app = Celery(
     'formaslov',
     broker=settings.celery_broker_url,
     include=[
-        'app.tasks.health',
         'app.tasks.imports',
         'app.tasks.exports',
     ],
@@ -24,9 +23,7 @@ celery_app.conf.update(
     task_serializer='json',
     result_serializer='json',
     task_ignore_result=True,
-    task_default_queue='default',
     task_queues=(
-        Queue('default', routing_key='default'),
         Queue('imports', routing_key='imports'),
         Queue('exports', routing_key='exports'),
     ),

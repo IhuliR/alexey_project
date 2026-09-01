@@ -4,7 +4,6 @@ from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
 from docx import Document
-from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.db.session import async_session
@@ -119,6 +118,7 @@ async def process_import_batch(import_id: int) -> None:
 
 
 async def mark_batch_failed(import_id: int, error: str) -> None:
+    logger.warning('Import batch %s failed: %s', import_id, error)
     async with async_session() as db:
         batch = await db.get(ImportBatch, import_id)
         if batch is None:

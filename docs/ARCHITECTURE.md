@@ -148,13 +148,13 @@ React routes:
 
 ## Фоновые задачи
 
-Celery настроен с RabbitMQ broker и одним worker-контейнером. Подготовлены очереди `imports` и `exports`, а также стандартная очередь `default` для технических задач. Техническая задача `app.tasks.health.healthcheck` проверяет прохождение сообщения через broker и выполнение worker-ом. Пользовательская задача `app.tasks.imports.process_import` выполняет пакетный импорт документов из ZIP-архива. Пользовательская задача `app.tasks.exports.generate_export` формирует JSON-файл экспорта документа.
+Celery настроен с RabbitMQ broker и одним worker-контейнером. Пользовательская задача `app.tasks.imports.process_import` выполняет пакетный импорт документов из ZIP-архива в очереди `imports`. Пользовательская задача `app.tasks.exports.generate_export` формирует JSON-файл экспорта документа в очереди `exports`.
 
 Result backend не настроен: текущим фоновым операциям достаточно доставки и выполнения задачи. Пользовательское состояние хранится в PostgreSQL-моделях `ImportBatch` и `ExportJob`.
 
 ## Infrastructure и deployment
 
-В репозитории есть FastAPI image для локальной миграционной среды и три legacy production image:
+В репозитории есть FastAPI image для локальной среды и три legacy production image:
 
 - backend: Python 3.12, зависимости, Gunicorn;
 - frontend: Node 20, `npm ci`, production build;
@@ -164,7 +164,7 @@ Result backend не настроен: текущим фоновым операц
 
 Корневой `docker-compose.yml` используется для локальной FastAPI-инфраструктуры и поднимает `api`, `db`, `redis`, `rabbitmq` и `celery-worker`.
 
-Существующий GitHub Actions workflow при push в `master` пока проверяет и разворачивает legacy Django backend. Переключение production CI/CD на FastAPI не входит в текущий этап.
+Существующий GitHub Actions workflow при push в `master` пока проверяет и разворачивает legacy Django backend. Переключение production CI/CD на FastAPI требует отдельной deployment-работы.
 
 Legacy workflow:
 

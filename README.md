@@ -31,7 +31,7 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 ## Стек
 
-**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL, Celery. Django / DRF сохранены как legacy-реализация на время миграции.
+**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL, Celery. Django / DRF сохранены для legacy production deployment, migrations и тестов.
 
 **Frontend:** React 19, React Router, Axios, Create React App.
 
@@ -49,9 +49,9 @@ React хранит JWT в `localStorage`, централизованно доб�
 
 Подробнее: [архитектура](docs/ARCHITECTURE.md).
 
-### Миграция backend на FastAPI
+### Состояние миграции backend
 
-Проект постепенно переводится с Django / DRF на FastAPI в рамках подготовки к пакетной обработке исследовательских материалов, фоновым задачам и будущим I/O-bound интеграциям.
+Перенос основного пользовательского API с Django / DRF на FastAPI завершён. FastAPI backend поддерживает core API, Redis-кэш, пакетный импорт и фоновый экспорт.
 
 Основной пользовательский API перенесён на FastAPI с сохранением существующих URL и JSON-контрактов. Django / DRF backend пока остаётся в репозитории как legacy-реализация, а SQLAlchemy-модели совместимы с созданной Django схемой PostgreSQL.
 
@@ -151,7 +151,7 @@ docker compose run --rm api alembic upgrade head
 docker compose up api celery-worker
 ```
 
-Техническая Celery-задача `app.tasks.health.healthcheck` нужна только для проверки инфраструктуры. Пользовательская задача `app.tasks.imports.process_import` обрабатывает ZIP-импорт в очереди `imports`, а `app.tasks.exports.generate_export` формирует JSON-экспорт в очереди `exports`.
+Celery worker выполняет две пользовательские задачи: `app.tasks.imports.process_import` обрабатывает ZIP-импорт в очереди `imports`, а `app.tasks.exports.generate_export` формирует JSON-экспорт в очереди `exports`.
 
 ### 3. Legacy Django backend
 
@@ -188,7 +188,7 @@ API использует префикс `/api/v1/`. Основные групп�
 
 ## Deployment
 
-Существующий production workflow пока использует legacy Django image с Gunicorn. Его переключение на FastAPI не входит в этот этап. Локальная FastAPI-инфраструктура запускается корневым `docker-compose.yml`.
+Существующий production workflow пока использует legacy Django image с Gunicorn. Его переключение на FastAPI требует отдельного deployment-этапа. Локальная FastAPI-инфраструктура запускается корневым `docker-compose.yml`.
 
 TLS и конфигурация внешнего reverse proxy находятся вне этого репозитория.
 

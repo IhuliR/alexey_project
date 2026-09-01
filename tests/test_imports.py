@@ -231,6 +231,7 @@ def test_import_records_item_errors_and_keeps_successful_documents(
 def test_invalid_zip_marks_import_failed(
     client: TestClient,
     queued_imports: list[dict],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     headers = auth_headers(register_and_login(client, 'import-bad-zip-user'))
     batch = create_import(client, headers, b'not a zip')
@@ -240,6 +241,7 @@ def test_invalid_zip_marks_import_failed(
     response = client.get(f"/api/v1/imports/{batch['id']}/", headers=headers)
     assert response.json()['status'] == 'failed'
     assert response.json()['error'] == 'Invalid ZIP archive.'
+    assert f"Import batch {batch['id']} failed" in caplog.text
 
 
 def test_unsafe_zip_path_marks_import_failed(
