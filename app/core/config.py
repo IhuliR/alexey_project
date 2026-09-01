@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 300
     celery_broker_url: str = 'amqp://guest:guest@localhost:5672//'
     import_storage_dir: Path = Path('/tmp/formaslov_imports')
+    export_storage_dir: Path = Path('/tmp/formaslov_exports')
     max_archive_size: int = 10 * 1024 * 1024
     max_archive_files: int = 100
     max_document_size: int = 2 * 1024 * 1024

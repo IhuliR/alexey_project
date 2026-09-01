@@ -10,7 +10,14 @@ from app.api.errors import (
     api_validation_error_handler,
     request_validation_error_handler,
 )
-from app.api.routers import annotations, auth, documents, imports, labels
+from app.api.routers import (
+    annotations,
+    auth,
+    documents,
+    exports,
+    imports,
+    labels,
+)
 from app.core.cache import close_redis
 from app.core.config import get_settings
 from app.db.session import close_db
@@ -47,6 +54,7 @@ app.add_exception_handler(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(imports.router)
+app.include_router(exports.router)
 app.include_router(labels.router)
 app.include_router(annotations.router)
 

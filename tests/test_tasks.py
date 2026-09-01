@@ -2,6 +2,7 @@ import pytest
 
 from app.core.config import Settings, get_settings
 from app.tasks.celery_app import celery_app
+from app.tasks.exports import generate_export
 from app.tasks.health import healthcheck
 from app.tasks.imports import process_import
 
@@ -31,6 +32,7 @@ def test_settings_read_import_limits_from_environment(
     monkeypatch.setenv('MAX_ARCHIVE_FILES', '2')
     monkeypatch.setenv('MAX_DOCUMENT_SIZE', '512')
     monkeypatch.setenv('ALLOWED_DOCUMENT_EXTENSIONS', '.txt,.docx')
+    monkeypatch.setenv('EXPORT_STORAGE_DIR', '/tmp/exports')
 
     settings = Settings(
         secret_key='test-secret-key-for-formaslov-fastapi-tests',
@@ -41,6 +43,7 @@ def test_settings_read_import_limits_from_environment(
     assert settings.max_archive_files == 2
     assert settings.max_document_size == 512
     assert settings.document_extensions == {'.txt', '.docx'}
+    assert str(settings.export_storage_dir) == '/tmp/exports'
 
 
 def test_healthcheck_task_is_registered() -> None:
@@ -49,6 +52,10 @@ def test_healthcheck_task_is_registered() -> None:
 
 def test_process_import_task_is_registered() -> None:
     assert 'app.tasks.imports.process_import' in celery_app.tasks
+
+
+def test_generate_export_task_is_registered() -> None:
+    assert 'app.tasks.exports.generate_export' in celery_app.tasks
 
 
 def test_celery_queues_and_routes_are_configured() -> None:
@@ -82,3 +89,14 @@ def test_process_import_task_uses_imports_route() -> None:
     )
     assert route['queue'].name == 'imports'
     assert route['routing_key'] == 'imports'
+
+
+def test_generate_export_task_uses_exports_route() -> None:
+    route = celery_app.amqp.router.route(
+        {},
+        generate_export.name,
+        args=(1,),
+        kwargs={},
+    )
+    assert route['queue'].name == 'exports'
+    assert route['routing_key'] == 'exports'

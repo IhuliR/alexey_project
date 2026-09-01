@@ -67,6 +67,7 @@ FastAPI routers публикуют CRUD для:
 
 - `/api/v1/documents/`;
 - `/api/v1/imports/`;
+- `/api/v1/exports/`;
 - `/api/v1/labels/`;
 - `/api/v1/annotations/`.
 
@@ -80,6 +81,12 @@ Batch import:
 - `POST /api/v1/imports/` — загрузка ZIP-архива и постановка фоновой задачи;
 - `GET /api/v1/imports/{id}/` — статус batch import;
 - `GET /api/v1/imports/{id}/items/` — результаты отдельных файлов.
+
+Background export:
+
+- `POST /api/v1/exports/` — постановка JSON-экспорта документа;
+- `GET /api/v1/exports/{id}/` — статус export job;
+- `GET /api/v1/exports/{id}/download/` — скачивание готового файла.
 
 FastAPI реализует регистрацию, текущего пользователя, смену пароля и совместимые JWT endpoints. Подробный контракт находится в [API guide](API_GUIDE.md); OpenAPI schema и ReDoc генерируются автоматически.
 
@@ -105,6 +112,12 @@ Import router принимает ZIP-архив через `multipart/form-data`
 
 Worker последовательно обрабатывает файлы архива, поддерживает `.txt` и `.docx`, использует общую логику создания `TextDocument`, обновляет счётчики batch и пишет ошибку в `ImportItem`, если конкретный файл не может быть импортирован. Batch принадлежит текущему пользователю; статус и элементы чужого импорта скрываются через `404`.
 
+### Exports
+
+Export router принимает JSON-запрос с `document_id` и `format`, проверяет ownership документа, создаёт `ExportJob` и отправляет Celery-задачу `app.tasks.exports.generate_export` в очередь `exports`. HTTP-request возвращает `202 Accepted` и не ждёт формирования файла.
+
+Worker перечитывает документ, метки пользователя и аннотации документа из PostgreSQL, формирует JSON schema v2, совместимую с текущим frontend export, сохраняет файл в директорию из `EXPORT_STORAGE_DIR` и переводит job в `completed`. Статус и download доступны только владельцу export job; до завершения download возвращает `409 Conflict`.
+
 ## Authentication и authorization
 
 FastAPI dependency проверяет JWT access token и загружает активного пользователя. Клиент передаёт access token как `Authorization: Bearer <token>`.
@@ -125,19 +138,19 @@ React routes:
 
 Общий Axios client читает `REACT_APP_API_URL`, добавляет access token и после первого `401` пытается получить новый access token через refresh endpoint. При неудаче токены удаляются.
 
-Рабочая страница документа загружает документ, метки, аннотации и chunk. Browser selection преобразуется из локальных координат chunk в абсолютные offsets. Экспорт формируется полностью на frontend и не имеет отдельного backend endpoint.
+Рабочая страница документа загружает документ, метки, аннотации и chunk. Browser selection преобразуется из локальных координат chunk в абсолютные offsets. Существующий frontend по-прежнему умеет формировать JSON-export локально; backend дополнительно предоставляет фоновый export API для последующей интеграции UI.
 
 Публичный `/demo` использует статические frontend-данные и не обращается к API. Management command `seed_demo_data` — отдельная локальная/admin-утилита.
 
 ## Хранение данных
 
-Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. ZIP-архивы batch import временно хранятся на диске до завершения worker-задачи. Docker volumes используются для PostgreSQL, общей директории import archives, Django static и media directory.
+Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. ZIP-архивы batch import временно хранятся на диске до завершения worker-задачи. Готовые JSON export-файлы хранятся локально в отдельной директории. Docker volumes используются для PostgreSQL, общей директории import archives, export files, Django static и media directory.
 
 ## Фоновые задачи
 
-Celery настроен с RabbitMQ broker и одним worker-контейнером. Подготовлены очереди `imports` и `exports`, а также стандартная очередь `default` для технических задач. Техническая задача `app.tasks.health.healthcheck` проверяет прохождение сообщения через broker и выполнение worker-ом. Пользовательская задача `app.tasks.imports.process_import` выполняет пакетный импорт документов из ZIP-архива.
+Celery настроен с RabbitMQ broker и одним worker-контейнером. Подготовлены очереди `imports` и `exports`, а также стандартная очередь `default` для технических задач. Техническая задача `app.tasks.health.healthcheck` проверяет прохождение сообщения через broker и выполнение worker-ом. Пользовательская задача `app.tasks.imports.process_import` выполняет пакетный импорт документов из ZIP-архива. Пользовательская задача `app.tasks.exports.generate_export` формирует JSON-файл экспорта документа.
 
-Result backend не настроен: текущему этапу достаточно доставки и выполнения задачи. Таблицы задач или пользовательские job-модели не добавлены.
+Result backend не настроен: текущим фоновым операциям достаточно доставки и выполнения задачи. Пользовательское состояние хранится в PostgreSQL-моделях `ImportBatch` и `ExportJob`.
 
 ## Infrastructure и deployment
 
@@ -172,6 +185,6 @@ Legacy workflow:
 - `chunks` основан на разделении пустыми строками, а не на фиксированном размере;
 - при `page_size > 1` API возвращает несколько chunks, но `chunk_start`, `chunk_end` и `chunk_index` становятся `null`;
 - FastAPI OpenAPI schema генерируется автоматически; статическая schema остаётся только в legacy backend;
-- фоновый экспорт ещё не реализован;
+- автоматическая retention/cleanup готовых export-файлов пока отсутствует;
 - Celery result backend не настроен;
 - production compose зависит от заранее созданной внешней Docker-сети `web` и внешнего reverse proxy.

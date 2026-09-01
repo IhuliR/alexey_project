@@ -29,6 +29,7 @@ def clean_database() -> None:
     async def delete_test_data() -> None:
         engine = create_async_engine(url, poolclass=NullPool)
         async with engine.begin() as connection:
+            await connection.execute(text('DELETE FROM core_exportjob'))
             await connection.execute(text('DELETE FROM core_importitem'))
             await connection.execute(text('DELETE FROM core_importbatch'))
             await connection.execute(text('DELETE FROM core_annotation'))

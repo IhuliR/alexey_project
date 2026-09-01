@@ -221,3 +221,49 @@ class ImportItem(Base):
         nullable=True,
     )
     error: Mapped[str] = mapped_column(Text, default='')
+
+
+class ExportJob(Base):
+    __tablename__ = 'core_exportjob'
+    __table_args__ = (
+        Index('core_exportjob_user_id_idx', 'user_id'),
+        Index('core_exportjob_document_id_idx', 'document_id'),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            'users_myuser.id',
+            name='core_exportjob_user_id_fk_users_myuser_id',
+            deferrable=True,
+            initially='DEFERRED',
+        ),
+    )
+    document_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            'core_textdocument.id',
+            name='core_exportjob_document_id_fk_core_textdocument_id',
+            ondelete='SET NULL',
+            deferrable=True,
+            initially='DEFERRED',
+        ),
+        nullable=True,
+    )
+    format: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(32), default='pending')
+    file_path: Mapped[str] = mapped_column(String(500), default='')
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    error: Mapped[str] = mapped_column(Text, default='')
