@@ -140,3 +140,20 @@ class ImportItemRead(OrmSchema):
     status: str
     document_id: int | None
     error: str
+
+
+class ExportJobCreate(BaseModel):
+    document_id: int
+    format: str = 'json'
+
+
+class ExportJobRead(OrmSchema):
+    id: int
+    user_id: int
+    document_id: int | None
+    format: str
+    status: str
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    error: str

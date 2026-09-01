@@ -27,6 +27,9 @@
 | POST | `imports/` | запуск batch import из ZIP |
 | GET | `imports/{id}/` | статус batch import |
 | GET | `imports/{id}/items/` | результаты файлов batch import |
+| POST | `exports/` | запуск фонового JSON export |
+| GET | `exports/{id}/` | статус export job |
+| GET | `exports/{id}/download/` | скачивание готового export |
 | GET, POST | `labels/` | список и создание |
 | GET, PUT, PATCH, DELETE | `labels/{id}/` | метка |
 | GET, POST | `annotations/` | список и создание |
@@ -312,6 +315,102 @@ Authorization: Bearer <access_token>
 
 Возможные статусы файла: `pending`, `processed`, `failed`.
 
+## Exports
+
+Фоновый export формирует JSON-файл документа, меток пользователя и аннотаций документа вне HTTP-request.
+
+```http
+POST /api/v1/exports/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "document_id": 12,
+  "format": "json"
+}
+```
+
+API проверяет ownership документа, создаёт `ExportJob`, отправляет `app.tasks.exports.generate_export` в очередь `exports` и сразу возвращает `202 Accepted`.
+
+```json
+{
+  "id": 42,
+  "user_id": 7,
+  "document_id": 12,
+  "format": "json",
+  "status": "pending",
+  "created_at": "2026-01-01T10:00:00Z",
+  "started_at": null,
+  "finished_at": null,
+  "error": ""
+}
+```
+
+Статус:
+
+```http
+GET /api/v1/exports/42/
+Authorization: Bearer <access_token>
+```
+
+Возможные статусы: `pending`, `processing`, `completed`, `failed`.
+
+Download:
+
+```http
+GET /api/v1/exports/42/download/
+Authorization: Bearer <access_token>
+```
+
+Скачивание доступно только для `completed` job владельца. Pending, processing и failed jobs возвращают `409 Conflict`. Чужой export возвращает `404 Not Found`. Абсолютный server path в API не возвращается.
+
+Файл отдаётся как `application/json` с именем вида:
+
+```text
+<document-slug>_export.json
+```
+
+JSON сохраняет текущую schema v2 frontend export:
+
+```json
+{
+  "schema_version": 2,
+  "exported_at": "2026-01-01T11:00:00Z",
+  "document": {
+    "id": 12,
+    "title": "Тёзка",
+    "slug": "tezka",
+    "original_filename": "Тёзка.txt",
+    "created_at": "2026-01-01T10:00:00Z",
+    "content": "Полный текст"
+  },
+  "labels": [
+    {
+      "id": 4,
+      "name": "Персонаж",
+      "color": "#ffcc00"
+    }
+  ],
+  "annotations": [
+    {
+      "id": 31,
+      "start": 0,
+      "end": 6,
+      "text": "Полный",
+      "label": {
+        "id": 4,
+        "name": "Персонаж",
+        "color": "#ffcc00"
+      },
+      "label_id": 4,
+      "created_at": "2026-01-01T10:05:00Z"
+    }
+  ]
+}
+```
+
 ## Labels
 
 Label representation:
@@ -433,6 +532,7 @@ Frontend зависит от следующих деталей:
 - annotation references используют числовые IDs;
 - `text` annotation формирует backend;
 - delete занятой label возвращает `code: label_in_use`;
-- export JSON строится в `frontend/src/utils/export.js`; backend export endpoint отсутствует.
+- frontend export JSON строится в `frontend/src/utils/export.js`;
+- backend export использует совместимую JSON schema v2.
 
 Актуальная OpenAPI schema генерируется FastAPI на `/openapi.json`. При изменении контракта нужно синхронно обновить backend tests, frontend consumer/tests и этот guide; `backend/static/schema.yaml` сохранён для legacy Django backend.

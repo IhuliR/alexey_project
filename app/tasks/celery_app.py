@@ -15,6 +15,7 @@ celery_app = Celery(
     include=[
         'app.tasks.health',
         'app.tasks.imports',
+        'app.tasks.exports',
     ],
 )
 
