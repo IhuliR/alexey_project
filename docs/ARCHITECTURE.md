@@ -66,6 +66,7 @@ MyUser 1 ─── * TextDocument 1 ─── * Annotation * ─── 1 Label *
 FastAPI routers публикуют CRUD для:
 
 - `/api/v1/documents/`;
+- `/api/v1/imports/`;
 - `/api/v1/labels/`;
 - `/api/v1/annotations/`.
 
@@ -73,6 +74,12 @@ FastAPI routers публикуют CRUD для:
 
 - `POST /api/v1/documents/upload/` — импорт UTF-8 `.txt`;
 - `GET /api/v1/documents/{id}/chunks/` — абзацы и offsets для текущей страницы.
+
+Batch import:
+
+- `POST /api/v1/imports/` — загрузка ZIP-архива и постановка фоновой задачи;
+- `GET /api/v1/imports/{id}/` — статус batch import;
+- `GET /api/v1/imports/{id}/items/` — результаты отдельных файлов.
 
 FastAPI реализует регистрацию, текущего пользователя, смену пароля и совместимые JWT endpoints. Подробный контракт находится в [API guide](API_GUIDE.md); OpenAPI schema и ReDoc генерируются автоматически.
 
@@ -91,6 +98,12 @@ Label router фильтрует запросы по владельцу. Пере
 ### Annotations
 
 Annotation router показывает только аннотации документов текущего пользователя и поддерживает фильтр `?document=<id>`. Валидация проверяет ownership документа и метки, offsets и вычисляет `text` по содержимому документа.
+
+### Imports
+
+Import router принимает ZIP-архив через `multipart/form-data`, сохраняет его во временную директорию из `IMPORT_STORAGE_DIR`, создаёт `ImportBatch` и отправляет Celery-задачу `app.tasks.imports.process_import` в очередь `imports`. HTTP-request возвращает `202 Accepted` и не ждёт обработки файлов.
+
+Worker последовательно обрабатывает файлы архива, поддерживает `.txt` и `.docx`, использует общую логику создания `TextDocument`, обновляет счётчики batch и пишет ошибку в `ImportItem`, если конкретный файл не может быть импортирован. Batch принадлежит текущему пользователю; статус и элементы чужого импорта скрываются через `404`.
 
 ## Authentication и authorization
 
@@ -118,11 +131,11 @@ React routes:
 
 ## Хранение данных
 
-Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. Docker volumes используются для PostgreSQL, Django static и media directory.
+Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. ZIP-архивы batch import временно хранятся на диске до завершения worker-задачи. Docker volumes используются для PostgreSQL, общей директории import archives, Django static и media directory.
 
 ## Фоновые задачи
 
-Celery настроен с RabbitMQ broker и одним worker-контейнером. Подготовлены очереди `imports` и `exports` для следующих этапов, а также стандартная очередь `default` для технических задач. Сейчас в коде есть только техническая задача `app.tasks.health.healthcheck`, которая проверяет прохождение сообщения через broker и выполнение worker-ом.
+Celery настроен с RabbitMQ broker и одним worker-контейнером. Подготовлены очереди `imports` и `exports`, а также стандартная очередь `default` для технических задач. Техническая задача `app.tasks.health.healthcheck` проверяет прохождение сообщения через broker и выполнение worker-ом. Пользовательская задача `app.tasks.imports.process_import` выполняет пакетный импорт документов из ZIP-архива.
 
 Result backend не настроен: текущему этапу достаточно доставки и выполнения задачи. Таблицы задач или пользовательские job-модели не добавлены.
 
@@ -159,6 +172,6 @@ Legacy workflow:
 - `chunks` основан на разделении пустыми строками, а не на фиксированном размере;
 - при `page_size > 1` API возвращает несколько chunks, но `chunk_start`, `chunk_end` и `chunk_index` становятся `null`;
 - FastAPI OpenAPI schema генерируется автоматически; статическая schema остаётся только в legacy backend;
-- реальные фоновые бизнес-задачи импорта и экспорта ещё не реализованы;
+- фоновый экспорт ещё не реализован;
 - Celery result backend не настроен;
 - production compose зависит от заранее созданной внешней Docker-сети `web` и внешнего reverse proxy.

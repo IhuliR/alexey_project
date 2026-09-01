@@ -151,3 +151,73 @@ class Annotation(Base):
             initially='DEFERRED',
         ),
     )
+
+
+class ImportBatch(Base):
+    __tablename__ = 'core_importbatch'
+    __table_args__ = (
+        Index('core_importbatch_user_id_idx', 'user_id'),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            'users_myuser.id',
+            name='core_importbatch_user_id_fk_users_myuser_id',
+            deferrable=True,
+            initially='DEFERRED',
+        ),
+    )
+    status: Mapped[str] = mapped_column(String(32), default='pending')
+    files_total: Mapped[int] = mapped_column(Integer, default=0)
+    files_processed: Mapped[int] = mapped_column(Integer, default=0)
+    files_failed: Mapped[int] = mapped_column(Integer, default=0)
+    archive_path: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    error: Mapped[str] = mapped_column(Text, default='')
+
+
+class ImportItem(Base):
+    __tablename__ = 'core_importitem'
+    __table_args__ = (
+        Index('core_importitem_import_batch_id_idx', 'import_batch_id'),
+        Index('core_importitem_document_id_idx', 'document_id'),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    import_batch_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            'core_importbatch.id',
+            name='core_importitem_import_batch_id_fk_core_importbatch_id',
+            ondelete='CASCADE',
+            deferrable=True,
+            initially='DEFERRED',
+        ),
+    )
+    filename: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(32), default='pending')
+    document_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            'core_textdocument.id',
+            name='core_importitem_document_id_fk_core_textdocument_id',
+            ondelete='SET NULL',
+            deferrable=True,
+            initially='DEFERRED',
+        ),
+        nullable=True,
+    )
+    error: Mapped[str] = mapped_column(Text, default='')

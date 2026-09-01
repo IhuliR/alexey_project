@@ -41,3 +41,22 @@ async def generate_unique_document_slug(
         slug = f'{base_slug[:255 - len(suffix)]}{suffix}'
         counter += 1
     return slug
+
+
+async def create_text_document(
+    db: AsyncSession,
+    user_id: int,
+    title: str,
+    original_filename: str,
+    content: str,
+) -> TextDocument:
+    resolved_title = resolve_document_title(title, original_filename)
+    document = TextDocument(
+        user_id=user_id,
+        title=resolved_title,
+        slug=await generate_unique_document_slug(db, user_id, resolved_title),
+        original_filename=original_filename,
+        content=normalize_newlines(content),
+    )
+    db.add(document)
+    return document

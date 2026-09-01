@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +18,11 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     cache_ttl_seconds: int = 300
     celery_broker_url: str = 'amqp://guest:guest@localhost:5672//'
+    import_storage_dir: Path = Path('/tmp/formaslov_imports')
+    max_archive_size: int = 10 * 1024 * 1024
+    max_archive_files: int = 100
+    max_document_size: int = 2 * 1024 * 1024
+    allowed_document_extensions: str = '.txt,.docx'
     database_url: str | None = None
     postgres_user: str = 'formaslov'
     postgres_password: str = 'formaslov'
@@ -62,6 +68,14 @@ class Settings(BaseSettings):
             for origin in self.cors_allowed_origins.split(',')
             if origin.strip()
         ]
+
+    @property
+    def document_extensions(self) -> set[str]:
+        return {
+            extension.strip().lower()
+            for extension in self.allowed_document_extensions.split(',')
+            if extension.strip()
+        }
 
 
 @lru_cache

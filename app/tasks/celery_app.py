@@ -12,7 +12,10 @@ settings = get_settings()
 celery_app = Celery(
     'formaslov',
     broker=settings.celery_broker_url,
-    include=['app.tasks.health'],
+    include=[
+        'app.tasks.health',
+        'app.tasks.imports',
+    ],
 )
 
 celery_app.conf.update(
