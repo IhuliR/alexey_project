@@ -6,6 +6,7 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 - регистрация, вход по JWT и смена пароля;
 - создание документа вручную или из UTF-8 `.txt`;
+- пакетная загрузка документов из ZIP-архива;
 - просмотр текста по абзацам с абсолютными offsets;
 - создание цветных пользовательских меток;
 - создание аннотаций;
@@ -22,7 +23,7 @@ Formaslov — full-stack MVP для ручной разметки текстов
 - переносы строк нормализуются при сохранении, чтобы offsets оставались согласованными;
 - имена меток уникальны в рамках пользователя, а используемая метка защищена от удаления;
 - список пользовательских меток кэшируется в Redis и инвалидируется при изменении меток;
-- Celery worker подключается к RabbitMQ и готов к будущим фоновым задачам;
+- Celery worker через RabbitMQ обрабатывает пакетный импорт документов;
 - PostgreSQL — единственный настроенный database backend;
 - backend API покрыт тестами ownership, валидации, auth и нестандартных ответов.
 
@@ -131,7 +132,7 @@ http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/redoc
 ```
 
-Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`. Redis подключается через `REDIS_URL`; TTL кэша задаётся `CACHE_TTL_SECONDS`. Celery использует RabbitMQ broker из `CELERY_BROKER_URL`.
+Для работы с PostgreSQL используются переменные окружения из `.env`. Также поддерживается `DATABASE_URL`. Redis подключается через `REDIS_URL`; TTL кэша задаётся `CACHE_TTL_SECONDS`. Celery использует RabbitMQ broker из `CELERY_BROKER_URL`. ZIP-архивы batch import временно сохраняются в `IMPORT_STORAGE_DIR`; лимиты задаются через `MAX_ARCHIVE_SIZE`, `MAX_ARCHIVE_FILES`, `MAX_DOCUMENT_SIZE` и `ALLOWED_DOCUMENT_EXTENSIONS`.
 
 Baseline migration Alembic создаёт предметные таблицы в пустой БД, а в существующей Django-схеме оставляет их без изменений. Проверить состояние:
 
@@ -148,7 +149,7 @@ docker compose run --rm api alembic upgrade head
 docker compose up api celery-worker
 ```
 
-Техническая Celery-задача `app.tasks.health.healthcheck` нужна только для проверки инфраструктуры. Пользовательские фоновые задачи пакетного импорта и экспорта будут добавлены отдельно.
+Техническая Celery-задача `app.tasks.health.healthcheck` нужна только для проверки инфраструктуры. Пользовательская задача `app.tasks.imports.process_import` обрабатывает ZIP-импорт в очереди `imports`.
 
 ### 3. Legacy Django backend
 
@@ -179,7 +180,7 @@ npm start
 
 ## API
 
-API использует префикс `/api/v1/`. Основные группы: auth, documents, labels и annotations. Документы принимают `multipart/form-data`; для меток и аннотаций frontend использует JSON. Все пользовательские ресурсы доступны только владельцу.
+API использует префикс `/api/v1/`. Основные группы: auth, documents, imports, labels и annotations. Документы и ZIP-импорт принимают `multipart/form-data`; для меток и аннотаций frontend использует JSON. Все пользовательские ресурсы доступны только владельцу.
 
 Полный контракт и примеры: [API guide](docs/API_GUIDE.md). OpenAPI schema доступна на `/openapi.json`, Swagger UI — на `/docs`, ReDoc — на `/redoc`.
 

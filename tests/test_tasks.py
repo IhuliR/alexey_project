@@ -3,6 +3,7 @@ import pytest
 from app.core.config import Settings, get_settings
 from app.tasks.celery_app import celery_app
 from app.tasks.health import healthcheck
+from app.tasks.imports import process_import
 
 
 def test_celery_app_uses_configured_broker_url() -> None:
@@ -23,8 +24,31 @@ def test_settings_read_celery_broker_url_from_environment(
     assert settings.celery_broker_url == broker_url
 
 
+def test_settings_read_import_limits_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv('MAX_ARCHIVE_SIZE', '1024')
+    monkeypatch.setenv('MAX_ARCHIVE_FILES', '2')
+    monkeypatch.setenv('MAX_DOCUMENT_SIZE', '512')
+    monkeypatch.setenv('ALLOWED_DOCUMENT_EXTENSIONS', '.txt,.docx')
+
+    settings = Settings(
+        secret_key='test-secret-key-for-formaslov-fastapi-tests',
+        _env_file=None,
+    )
+
+    assert settings.max_archive_size == 1024
+    assert settings.max_archive_files == 2
+    assert settings.max_document_size == 512
+    assert settings.document_extensions == {'.txt', '.docx'}
+
+
 def test_healthcheck_task_is_registered() -> None:
     assert 'app.tasks.health.healthcheck' in celery_app.tasks
+
+
+def test_process_import_task_is_registered() -> None:
+    assert 'app.tasks.imports.process_import' in celery_app.tasks
 
 
 def test_celery_queues_and_routes_are_configured() -> None:
@@ -47,3 +71,14 @@ def test_healthcheck_task_runs_in_eager_mode() -> None:
         assert result.get() == 'pytest'
     finally:
         celery_app.conf.task_always_eager = task_always_eager
+
+
+def test_process_import_task_uses_imports_route() -> None:
+    route = celery_app.amqp.router.route(
+        {},
+        process_import.name,
+        args=(1,),
+        kwargs={},
+    )
+    assert route['queue'].name == 'imports'
+    assert route['routing_key'] == 'imports'

@@ -8,8 +8,11 @@ services:
       DB_PORT: 5432
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      IMPORT_STORAGE_DIR: /tmp/formaslov_imports
     ports:
       - "8000:8000"
+    volumes:
+      - import_archives:/tmp/formaslov_imports
     depends_on:
       db:
         condition: service_healthy
@@ -20,7 +23,10 @@ services:
 
   celery-worker:
     build: .
-    command: celery -A app.tasks.celery_app worker --loglevel=info --queues=default,imports,exports --uid=nobody
+    command: >
+      sh -c "chmod 0777 /tmp/formaslov_imports &&
+      celery -A app.tasks.celery_app worker --loglevel=info
+      --queues=default,imports,exports --uid=nobody"
     env_file:
       - .env
     environment:
@@ -28,6 +34,10 @@ services:
       DB_PORT: 5432
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      IMPORT_STORAGE_DIR: /tmp/formaslov_imports
+      HOME: /tmp
+    volumes:
+      - import_archives:/tmp/formaslov_imports
     depends_on:
       db:
         condition: service_healthy
@@ -70,3 +80,4 @@ services:
 
 volumes:
   postgres_data:
+  import_archives:

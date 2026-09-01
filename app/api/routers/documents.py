@@ -20,6 +20,7 @@ from app.api.errors import ApiValidationError
 from app.models import Annotation, TextDocument
 from app.schemas import ChunkPage, DocumentRead, PaginatedDocuments
 from app.services.documents import (
+    create_text_document,
     generate_unique_document_slug,
     normalize_newlines,
     resolve_document_title,
@@ -129,15 +130,13 @@ async def upload_document(
             }
         )
 
-    title = resolve_document_title(Path(file.filename).stem, file.filename)
-    document = TextDocument(
-        user_id=user.id,
-        title=title,
-        slug=await generate_unique_document_slug(db, user.id, title),
-        original_filename=file.filename,
-        content=normalize_newlines(content),
+    document = await create_text_document(
+        db,
+        user.id,
+        Path(file.filename).stem,
+        file.filename,
+        content,
     )
-    db.add(document)
     await db.commit()
     await db.refresh(document)
     return document
@@ -166,19 +165,13 @@ async def create_document(
             }
         )
 
-    resolved_title = resolve_document_title(title, original_filename)
-    document = TextDocument(
-        user_id=user.id,
-        title=resolved_title,
-        slug=await generate_unique_document_slug(
-            db,
-            user.id,
-            resolved_title,
-        ),
-        original_filename=original_filename,
-        content=normalize_newlines(content),
+    document = await create_text_document(
+        db,
+        user.id,
+        title,
+        original_filename,
+        content,
     )
-    db.add(document)
     await db.commit()
     await db.refresh(document)
     return document

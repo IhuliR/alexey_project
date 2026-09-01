@@ -4,11 +4,11 @@
 
 - Base URL: `/api/v1/`
 - Основной формат: JSON
-- Documents create/update: `multipart/form-data`
+- Documents create/update и ZIP import: `multipart/form-data`
 - Auth header: `Authorization: Bearer <access_token>`
 - По умолчанию API требует аутентификацию; исключения — регистрация и JWT endpoints.
 
-Все documents, labels и annotations изолированы по текущему пользователю. Чужой detail resource обычно выглядит как отсутствующий и возвращает `404 Not Found`.
+Все documents, imports, labels и annotations изолированы по текущему пользователю. Чужой detail resource обычно выглядит как отсутствующий и возвращает `404 Not Found`.
 
 ## Краткая карта endpoints
 
@@ -24,6 +24,9 @@
 | GET, PUT, PATCH, DELETE | `documents/{id}/` | документ |
 | POST | `documents/upload/` | импорт UTF-8 `.txt` |
 | GET | `documents/{id}/chunks/` | chunks и offsets |
+| POST | `imports/` | запуск batch import из ZIP |
+| GET | `imports/{id}/` | статус batch import |
+| GET | `imports/{id}/items/` | результаты файлов batch import |
 | GET, POST | `labels/` | список и создание |
 | GET, PUT, PATCH, DELETE | `labels/{id}/` | метка |
 | GET, POST | `annotations/` | список и создание |
@@ -250,6 +253,64 @@ Authorization: Bearer <access_token>
 `chunk_start` и `chunk_end` — абсолютный полуоткрытый диапазон `[start, end)` в сохранённом `content`. При `page_size > 1` массив содержит несколько chunks, а `chunk_index`, `chunk_start` и `chunk_end` равны `null`.
 
 Для пустого документа возвращается пустой `chunk`, `total_chunks: 0` и null offsets. Нечисловые или неположительные параметры дают `400`, страница за диапазоном — `404`.
+
+## Imports
+
+Batch import принимает ZIP-архив и создаёт документы текущего пользователя в фоновой Celery-задаче.
+
+```http
+POST /api/v1/imports/
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+Единственное поле — `file`. API принимает только `.zip`, сохраняет архив во временную директорию, создаёт запись импорта, отправляет `app.tasks.imports.process_import` в очередь `imports` и сразу возвращает `202 Accepted`.
+
+```json
+{
+  "id": 31,
+  "status": "pending",
+  "files_total": 0,
+  "files_processed": 0,
+  "files_failed": 0,
+  "created_at": "2026-01-01T10:00:00Z",
+  "started_at": null,
+  "finished_at": null,
+  "error": ""
+}
+```
+
+Worker поддерживает `.txt` и `.docx`. Неподдерживаемые расширения, повреждённые документы и пустые документы фиксируются как ошибки отдельных файлов; batch завершается как `completed_with_errors`, если хотя бы один файл был обработан с ошибкой.
+
+Статус:
+
+```http
+GET /api/v1/imports/31/
+Authorization: Bearer <access_token>
+```
+
+Возможные статусы batch: `pending`, `processing`, `completed`, `completed_with_errors`, `failed`.
+
+Элементы:
+
+```http
+GET /api/v1/imports/31/items/
+Authorization: Bearer <access_token>
+```
+
+```json
+[
+  {
+    "id": 101,
+    "filename": "interview-1.txt",
+    "status": "processed",
+    "document_id": 44,
+    "error": ""
+  }
+]
+```
+
+Возможные статусы файла: `pending`, `processed`, `failed`.
 
 ## Labels
 

@@ -120,3 +120,23 @@ class AnnotationRead(OrmSchema):
     end: int
     text: str
     created_at: datetime
+
+
+class ImportBatchRead(OrmSchema):
+    id: int
+    status: str
+    files_total: int
+    files_processed: int
+    files_failed: int
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    error: str
+
+
+class ImportItemRead(OrmSchema):
+    id: int
+    filename: str
+    status: str
+    document_id: int | None
+    error: str
