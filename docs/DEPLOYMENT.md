@@ -19,8 +19,10 @@ External network по умолчанию называется `web`, alias gatew
 Перед первым FastAPI rollout в `/opt/projects/formaslov/.env` должны быть добавлены:
 
 ```env
+RABBITMQ_DEFAULT_USER=formaslov
+RABBITMQ_DEFAULT_PASS=<strong-rabbitmq-password>
 REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+CELERY_BROKER_URL=amqp://formaslov:<strong-rabbitmq-password>@rabbitmq:5672//
 ```
 
 Существующие `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `SECRET_KEY`, `NGINX_SERVER_NAME` и `DOCKER_USERNAME` сохраняются. Пути import/export задаются production Compose внутри общего `/app_data`; менять их в server `.env` не требуется.
