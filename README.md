@@ -31,7 +31,7 @@ Formaslov — full-stack MVP для ручной разметки текстов
 
 ## Стек
 
-**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL, Celery. Django / DRF сохранены для legacy production deployment, migrations и тестов.
+**Backend:** Python 3.12, FastAPI, Pydantic 2, SQLAlchemy 2, asyncpg, Alembic, PostgreSQL, Celery. Django / DRF сохранены для rollback, legacy migrations и тестов.
 
 **Frontend:** React 19, React Router, Axios, Create React App.
 
@@ -188,7 +188,9 @@ API использует префикс `/api/v1/`. Основные групп�
 
 ## Deployment
 
-Существующий production workflow пока использует legacy Django image с Gunicorn. Его переключение на FastAPI требует отдельного deployment-этапа. Локальная FastAPI-инфраструктура запускается корневым `docker-compose.yml`.
+Production Compose запускает FastAPI, PostgreSQL, Redis, RabbitMQ, Celery worker, frontend и Nginx gateway. CI/CD публикует immutable image tags по commit SHA, применяет Alembic migrations и обновляет сервисы без остановки PostgreSQL volume.
+
+Порядок первого rollout, обязательные environment variables и rollback описаны в [deployment guide](docs/DEPLOYMENT.md).
 
 TLS и конфигурация внешнего reverse proxy находятся вне этого репозитория.
 
@@ -196,6 +198,7 @@ TLS и конфигурация внешнего reverse proxy находятс�
 
 - [Архитектура](docs/ARCHITECTURE.md)
 - [API guide](docs/API_GUIDE.md)
+- [Deployment](docs/DEPLOYMENT.md)
 
 ## License
 

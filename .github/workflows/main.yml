@@ -15,10 +15,15 @@ jobs:
         env:
           POSTGRES_USER: django_user
           POSTGRES_PASSWORD: django_password
-          POSTGRES_DB: django_db
+          POSTGRES_DB: formaslov_test
         ports:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
       - name: Check out code
@@ -35,22 +40,34 @@ jobs:
           pip install -r backend/requirements.txt 
           pip install flake8
 
-      - name: Test backend with flake8 and Django
+      - name: Check legacy backend with flake8
+        run: python -m flake8 backend/
+
+      - name: Test legacy Django backend
         env:
-          SECRET_KEY: test-secret-key 
-          DEBUG: "False" 
-          POSTGRES_USER: django_user 
-          POSTGRES_PASSWORD: django_password 
-          POSTGRES_DB: django_db 
-          DB_HOST: localhost 
+          SECRET_KEY: test-secret-key
+          DEBUG: "False"
+          POSTGRES_USER: django_user
+          POSTGRES_PASSWORD: django_password
+          POSTGRES_DB: formaslov_test
+          DB_HOST: localhost
           DB_PORT: "5432"
           ALLOWED_HOSTS: localhost,127.0.0.1
           CSRF_TRUSTED_ORIGINS: http://localhost,http://127.0.0.1
           CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
         run: |
-          python -m flake8 backend/
           cd backend/
           python manage.py test
+
+      - name: Test FastAPI backend
+        env:
+          SECRET_KEY: test-secret-key
+          DATABASE_URL: postgresql+asyncpg://django_user:django_password@localhost:5432/formaslov_test
+          TEST_DATABASE_URL: postgresql+asyncpg://django_user:django_password@localhost:5432/formaslov_test
+          TEST_REDIS_URL: redis://localhost:6379/0
+        run: |
+          alembic upgrade head
+          python -m pytest tests -q
   
   build_backend_and_push_to_docker_hub:
     name: Push backend Docker image to DockerHub
@@ -72,9 +89,11 @@ jobs:
       - name: Push to DockerHub
         uses: docker/build-push-action@v6
         with:
-          context: ./backend/
+          context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/formaslov_backend:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/formaslov_backend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/formaslov_backend:latest
     
   frontend_tests:
     runs-on: ubuntu-latest
@@ -116,7 +135,9 @@ jobs:
           push: true
           build-args: |
             REACT_APP_API_URL=/api/v1/
-          tags: ${{ secrets.DOCKER_USERNAME }}/formaslov_frontend:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/formaslov_frontend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/formaslov_frontend:latest
   
   build_gateway_and_push_to_docker_hub:
     name: Push gateway Docker image to DockerHub
@@ -137,10 +158,13 @@ jobs:
         with:
           context: ./nginx/
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/formaslov_gateway:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/formaslov_gateway:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/formaslov_gateway:latest
   
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     needs:
       - build_backend_and_push_to_docker_hub
       - build_frontend_and_push_to_docker_hub
@@ -148,6 +172,39 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Prepare rollback state
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -eu
+            cd /opt/projects/formaslov/
+            if [ -f .current-image-tag ]; then
+              cp .current-image-tag .previous-image-tag
+            fi
+            if [ -f docker-compose.yml ]; then
+              cp docker-compose.yml docker-compose.previous.yml
+            fi
+            if [ ! -f docker-compose.legacy.yml ]; then
+              cp docker-compose.yml docker-compose.legacy.yml
+              backend_image=$(sudo docker compose -f docker-compose.yml images -q backend)
+              frontend_image=$(sudo docker compose -f docker-compose.yml images -q frontend)
+              gateway_image=$(sudo docker compose -f docker-compose.yml images -q gateway)
+              test -n "$backend_image"
+              test -n "$frontend_image"
+              test -n "$gateway_image"
+              sudo docker image tag "$backend_image" formaslov_backend:pre-fastapi
+              sudo docker image tag "$frontend_image" formaslov_frontend:pre-fastapi
+              sudo docker image tag "$gateway_image" formaslov_gateway:pre-fastapi
+              sed -i \
+                -e 's#image: .*formaslov_backend:latest#image: formaslov_backend:pre-fastapi#' \
+                -e 's#image: .*formaslov_frontend:latest#image: formaslov_frontend:pre-fastapi#' \
+                -e 's#image: .*formaslov_gateway:latest#image: formaslov_gateway:pre-fastapi#' \
+                docker-compose.legacy.yml
+            fi
       
       - name: Copy docker-compose.yml via ssh
         uses: appleboy/scp-action@master
@@ -160,20 +217,29 @@ jobs:
           strip_components: 1
           overwrite: true
 
-      - name: Executing remote ssh commands to deploy
+      - name: Deploy FastAPI backend
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
+            set -eu
             cd /opt/projects/formaslov/
-            sudo docker compose -f docker-compose.yml pull
-            sudo docker compose -f docker-compose.yml down
-            sudo docker compose -f docker-compose.yml up -d 
-            sleep 5
-            sudo docker compose -f docker-compose.yml exec -T backend python manage.py migrate --noinput
-            sudo docker compose -f docker-compose.yml exec -T backend python manage.py collectstatic --noinput
+            IMAGE_TAG=${{ github.sha }}
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose config --quiet
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose pull
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose up -d --wait db redis rabbitmq
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose run --rm backend alembic upgrade head
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose up -d --wait backend celery-worker
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T backend \
+              python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose up -d frontend gateway
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T gateway \
+              wget -qO- http://127.0.0.1/health
+            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T gateway \
+              sh -c 'wget -qO- "https://${NGINX_SERVER_NAME}/health"'
+            printf '%s\n' "$IMAGE_TAG" > .current-image-tag
   
   send_message:
     runs-on: ubuntu-latest

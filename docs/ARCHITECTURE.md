@@ -16,7 +16,7 @@ Browser
                  └─ RabbitMQ ─ Celery worker
 ```
 
-FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Redis используется как cache layer для списка пользовательских меток; PostgreSQL остаётся source of truth. RabbitMQ используется как broker Celery, а отдельный worker выполняет фоновые задачи. Django backend сохранён в `backend/` как legacy-реализация и источник существующих migrations. Текущий production compose пока продолжает запускать legacy Django; переключение deployment выполняется отдельно.
+FastAPI работает с PostgreSQL асинхронно через SQLAlchemy 2 и `asyncpg`. Redis используется как cache layer для списка пользовательских меток; PostgreSQL остаётся source of truth. RabbitMQ используется как broker Celery, а отдельный worker выполняет фоновые задачи. Django backend сохранён в `backend/` для rollback, legacy migrations и тестов, но production runtime использует FastAPI.
 
 ## Backend modules
 
@@ -144,7 +144,7 @@ React routes:
 
 ## Хранение данных
 
-Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. ZIP-архивы batch import временно хранятся на диске до завершения worker-задачи. Готовые JSON export-файлы хранятся локально в отдельной директории. Docker volumes используются для PostgreSQL, общей директории import archives, export files, Django static и media directory.
+Основное хранилище — PostgreSQL. Redis хранит только временный JSON-кэш списка меток и не является source of truth. Загружаемый `.txt` декодируется как UTF-8 и сохраняется в `TextDocument.content`; исходный файл в media storage не записывается. ZIP-архивы batch import временно хранятся на диске до завершения worker-задачи. Готовые JSON export-файлы хранятся локально. В production FastAPI и Celery используют общий volume `app_data`, PostgreSQL сохраняется в `pg_data`, а frontend build — в `static`.
 
 ## Фоновые задачи
 
@@ -154,26 +154,24 @@ Result backend не настроен: текущим фоновым операц
 
 ## Infrastructure и deployment
 
-В репозитории есть FastAPI image для локальной среды и три legacy production image:
+Production использует три публикуемых image:
 
-- backend: Python 3.12, зависимости, Gunicorn;
+- backend: FastAPI, Alembic и Celery tasks;
 - frontend: Node 20, `npm ci`, production build;
 - gateway: Nginx с template конфигурации.
 
-`infra/docker-compose.yml` рассчитан на deployment: использует опубликованные images, именованные volumes и внешнюю сеть `web`; локальные host ports не публикуются.
+`backend` и `celery-worker` запускаются из одного backend image с разными commands. `infra/docker-compose.yml` использует immutable commit SHA tags, именованные volumes и внешнюю сеть `web`; внутренние host ports не публикуются.
 
 Корневой `docker-compose.yml` используется для локальной FastAPI-инфраструктуры и поднимает `api`, `db`, `redis`, `rabbitmq` и `celery-worker`.
 
-Существующий GitHub Actions workflow при push в `master` пока проверяет и разворачивает legacy Django backend. Переключение production CI/CD на FastAPI требует отдельной deployment-работы.
+GitHub Actions workflow при push в `master`:
 
-Legacy workflow:
-
-1. запускает flake8 и Django tests с PostgreSQL 16;
+1. запускает legacy Django и FastAPI tests с PostgreSQL 16 и Redis;
 2. запускает frontend tests;
-3. собирает и публикует backend, frontend и gateway images;
+3. публикует backend, frontend и gateway images с tags `latest` и commit SHA;
 4. копирует compose-файл на host по SSH;
-5. обновляет containers, выполняет migrations и `collectstatic`;
-6. отправляет служебное уведомление после deploy job.
+5. после approval поднимает infrastructure, выполняет Alembic migrations и обновляет runtime без `docker compose down`;
+6. проверяет internal и public `/health` и отправляет служебное уведомление.
 
 Настройка внешнего reverse proxy и TLS в репозитории отсутствует.
 
@@ -187,4 +185,5 @@ Legacy workflow:
 - FastAPI OpenAPI schema генерируется автоматически; статическая schema остаётся только в legacy backend;
 - автоматическая retention/cleanup готовых export-файлов пока отсутствует;
 - Celery result backend не настроен;
+- Django admin недоступен в FastAPI production runtime;
 - production compose зависит от заранее созданной внешней Docker-сети `web` и внешнего reverse proxy.
