@@ -190,15 +190,15 @@ jobs:
             fi
             if [ ! -f docker-compose.legacy.yml ]; then
               cp docker-compose.yml docker-compose.legacy.yml
-              backend_image=$(sudo docker compose -f docker-compose.yml images -q backend)
-              frontend_image=$(sudo docker compose -f docker-compose.yml images -q frontend)
-              gateway_image=$(sudo docker compose -f docker-compose.yml images -q gateway)
+              backend_image=$(docker compose -f docker-compose.yml images -q backend)
+              frontend_image=$(docker compose -f docker-compose.yml images -q frontend)
+              gateway_image=$(docker compose -f docker-compose.yml images -q gateway)
               test -n "$backend_image"
               test -n "$frontend_image"
               test -n "$gateway_image"
-              sudo docker image tag "$backend_image" formaslov_backend:pre-fastapi
-              sudo docker image tag "$frontend_image" formaslov_frontend:pre-fastapi
-              sudo docker image tag "$gateway_image" formaslov_gateway:pre-fastapi
+              docker image tag "$backend_image" formaslov_backend:pre-fastapi
+              docker image tag "$frontend_image" formaslov_frontend:pre-fastapi
+              docker image tag "$gateway_image" formaslov_gateway:pre-fastapi
               sed -i \
                 -e 's#image: .*formaslov_backend:latest#image: formaslov_backend:pre-fastapi#' \
                 -e 's#image: .*formaslov_frontend:latest#image: formaslov_frontend:pre-fastapi#' \
@@ -227,18 +227,18 @@ jobs:
             set -eu
             cd /opt/projects/formaslov/
             IMAGE_TAG=${{ github.sha }}
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose config --quiet
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose pull
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose up -d --wait db redis rabbitmq
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose run --rm backend alembic upgrade head
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose up -d --wait backend celery-worker
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T backend \
+            env IMAGE_TAG="$IMAGE_TAG" docker compose config --quiet
+            env IMAGE_TAG="$IMAGE_TAG" docker compose pull
+            env IMAGE_TAG="$IMAGE_TAG" docker compose up -d --wait db redis rabbitmq
+            env IMAGE_TAG="$IMAGE_TAG" docker compose run --rm backend alembic upgrade head
+            env IMAGE_TAG="$IMAGE_TAG" docker compose up -d --wait backend celery-worker
+            env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T backend \
               python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose up -d frontend gateway
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T gateway \
+            env IMAGE_TAG="$IMAGE_TAG" docker compose up -d frontend gateway
+            env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T gateway \
               wget -qO- http://127.0.0.1/health
-            sudo env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T gateway \
-              sh -c 'wget -qO- "https://${NGINX_SERVER_NAME}/health"'
+            env IMAGE_TAG="$IMAGE_TAG" docker compose exec -T gateway \
+              sh -c 'set -- $NGINX_SERVER_NAME; wget -qO- "https://$1/health"'
             printf '%s\n' "$IMAGE_TAG" > .current-image-tag
   
   send_message:
