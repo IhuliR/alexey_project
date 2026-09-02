@@ -3,6 +3,7 @@ volumes:
   static:
   media:
   app_data:
+  rabbitmq_data:
 
 services:
   db:
@@ -32,6 +33,11 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-alpine
     restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in .env}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
