@@ -2,41 +2,130 @@ volumes:
   pg_data:
   static:
   media:
+  app_data:
+  rabbitmq_data:
 
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     volumes:
       - pg_data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in .env}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
-    image: ${DOCKER_USERNAME}/formaslov_backend:latest
+    image: ${DOCKER_USERNAME}/formaslov_backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DEBUG: "False"
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in .env}
+      IMPORT_STORAGE_DIR: /app_data/imports
+      EXPORT_STORAGE_DIR: /app_data/exports
     volumes:
-      - static:/backend_static
-      - media:/app/media
+      - app_data:/app_data
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  celery-worker:
+    image: ${DOCKER_USERNAME}/formaslov_backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: >
+      sh -c "mkdir -p /app_data/imports /app_data/exports &&
+      chmod 0777 /app_data/imports /app_data/exports &&
+      celery -A app.tasks.celery_app worker --loglevel=info
+      --queues=imports,exports --uid=nobody"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in .env}
+      IMPORT_STORAGE_DIR: /app_data/imports
+      EXPORT_STORAGE_DIR: /app_data/exports
+      HOME: /tmp
+    volumes:
+      - app_data:/app_data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   frontend:
-    image: ${DOCKER_USERNAME}/formaslov_frontend:latest
+    image: ${DOCKER_USERNAME}/formaslov_frontend:${IMAGE_TAG:-latest}
     command: cp -r /app/build/. /frontend_static/
     volumes:
       - static:/frontend_static
+
   gateway:
-    image: ${DOCKER_USERNAME}/formaslov_gateway:latest
+    image: ${DOCKER_USERNAME}/formaslov_gateway:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME}
-      DJANGO_ADMIN_URL: ${DJANGO_ADMIN_URL}
     volumes:
-      - static:/static/
-      - media:/media/
+      - static:/static:ro
+      - media:/media:ro
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_completed_successfully
     networks:
       default:
       web:
@@ -46,4 +135,5 @@ services:
 networks:
   default:
   web:
+    name: ${WEB_NETWORK_NAME:-web}
     external: true

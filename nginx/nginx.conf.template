@@ -14,20 +14,36 @@ server {
         proxy_pass http://backend:8000/api/;
     }
 
-    location /redoc/ {
+    location = /health {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-        proxy_pass http://backend:8000/redoc/;
+        proxy_pass http://backend:8000/health;
     }
 
-    location /${DJANGO_ADMIN_URL} {
+    location = /docs {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-        proxy_pass http://backend:8000/${DJANGO_ADMIN_URL};
+        proxy_pass http://backend:8000/docs;
+    }
+
+    location = /redoc {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_pass http://backend:8000/redoc;
+    }
+
+    location = /openapi.json {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_pass http://backend:8000/openapi.json;
     }
 
     location /media/ {
