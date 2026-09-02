@@ -1,12 +1,16 @@
 const technologies = [
   'Python',
-  'Django',
-  'Django REST Framework',
+  'FastAPI',
+  'SQLAlchemy',
+  'Pydantic',
   'PostgreSQL',
+  'Alembic',
+  'Redis',
+  'RabbitMQ',
+  'Celery',
   'React',
   'JWT',
   'Docker Compose',
-  'Gunicorn',
   'Nginx',
   'GitHub Actions',
   'AI-assisted development',
@@ -20,9 +24,9 @@ function TechnologiesPage() {
           <p className="eyebrow">Fullstack-разработка</p>
           <h1>Технологии и реализация</h1>
           <p className="info-lead">
-            Formaslov — fullstack-проект с backend на Django REST Framework,
-            frontend на React SPA и инфраструктурой развёртывания на Docker
-            Compose.
+            Formaslov — fullstack-проект с backend на FastAPI, frontend на
+            React SPA, фоновой обработкой через Celery/RabbitMQ и
+            инфраструктурой развёртывания на Docker Compose.
           </p>
           <div className="tech-badges" aria-label="Технологии проекта">
             {technologies.map((technology) => (
@@ -39,20 +43,21 @@ function TechnologiesPage() {
         <article className="info-card stack-card">
           <span className="feature-number">01</span>
           <h2>Backend</h2>
-          <p>Python, Django, DRF, PostgreSQL, JWT, REST API и доменная модель данных.</p>
+          <p>Python, FastAPI, SQLAlchemy, Pydantic, JWT, REST API и доменная модель данных.</p>
         </article>
         <article className="info-card stack-card">
           <span className="feature-number">02</span>
           <h2>Frontend</h2>
           <p>
-            React SPA, маршрутизация, формы, разметка текста и экспорт JSON.
+            React SPA, маршрутизация, формы, разметка текста, import/export UI.
           </p>
         </article>
         <article className="info-card stack-card">
           <span className="feature-number">03</span>
           <h2>DevOps</h2>
           <p>
-            Docker Compose, Gunicorn, Nginx, volumes и GitHub Actions.
+            PostgreSQL, Alembic, Redis, RabbitMQ, Celery, Docker Compose,
+            Nginx и GitHub Actions.
           </p>
         </article>
       </section>
@@ -65,20 +70,21 @@ function TechnologiesPage() {
         <div className="info-prose">
           <p>
             Backend написан на{' '}
-            <strong>Python, Django и Django REST Framework</strong>. Он отвечает
-            за пользователей, документы, метки, аннотации, права доступа и
-            данные для экспорта размеченных текстов.
+            <strong>Python, FastAPI, SQLAlchemy и Pydantic</strong>. Он отвечает
+            за пользователей, документы, метки, аннотации, права доступа,
+            пакетный импорт материалов и фоновый экспорт размеченных текстов.
           </p>
           <div className="info-card info-list-card">
             <ul className="info-check-list">
-              <li>REST API для документов, меток и аннотаций.</li>
-              <li>JWT-аутентификация через Djoser / SimpleJWT.</li>
+              <li>REST API для документов, меток, аннотаций, импорта и экспорта.</li>
+              <li>JWT-аутентификация.</li>
               <li>Изоляция пользовательских данных.</li>
-              <li>Object-level permissions и пользовательские метки.</li>
+              <li>Ownership-проверки и пользовательские метки.</li>
               <li>
                 Защита от удаления меток, которые используются в аннотациях.
               </li>
-              <li>Экспорт документа и разметки в JSON.</li>
+              <li>Пакетный ZIP-импорт <code>.txt</code>/<code>.docx</code>.</li>
+              <li>Фоновый экспорт документа и разметки в JSON.</li>
               <li>
                 Read-only demo-режим без доступа к реальным пользовательским
                 данным.
@@ -148,7 +154,8 @@ function TechnologiesPage() {
           <p>
             Frontend реализован как <strong>React SPA</strong>. Он отвечает за
             клиентскую маршрутизацию, авторизацию, формы, работу с документами,
-            визуальную разметку текста и экспорт результата.
+            визуальную разметку текста, запуск пакетного импорта и скачивание
+            готового экспорта.
           </p>
           <div className="info-card info-list-card">
             <ul className="info-check-list">
@@ -159,8 +166,9 @@ function TechnologiesPage() {
               <li>
                 Загрузка <code>.txt</code> файлов и создание документов.
               </li>
+              <li>Пакетный ZIP-импорт материалов через фоновую обработку.</li>
               <li>Создание меток и выделение фрагментов текста.</li>
-              <li>Подсветка аннотаций и экспорт JSON.</li>
+              <li>Подсветка аннотаций и фоновый экспорт JSON.</li>
             </ul>
           </div>
           <div className="info-callout">
@@ -179,15 +187,18 @@ function TechnologiesPage() {
         </div>
         <div className="info-prose">
           <p>
-            Backend запускается через Gunicorn, Nginx используется как reverse
-            proxy и сервер статики, а volumes отвечают за хранение статических
-            файлов, media-данных и служебных артефактов. Для автоматизации
-            проверок и деплоя настроен CI/CD через GitHub Actions.
+            Backend запускается как FastAPI-сервис, Nginx используется как
+            reverse proxy и сервер статики, Redis отвечает за кэш, RabbitMQ —
+            за очередь задач, а Celery worker выполняет импорт и экспорт. Для
+            автоматизации проверок и деплоя настроен CI/CD через GitHub
+            Actions.
           </p>
           <div className="info-card info-list-card">
             <ul className="info-check-list">
-              <li>Отдельный backend-сервис на Django.</li>
-              <li>Запуск backend через Gunicorn.</li>
+              <li>Отдельный backend-сервис на FastAPI.</li>
+              <li>Alembic migrations для PostgreSQL.</li>
+              <li>Redis cache layer.</li>
+              <li>RabbitMQ broker и Celery worker.</li>
               <li>Сборка frontend в статические файлы.</li>
               <li>Nginx как reverse proxy и сервер для frontend/static.</li>
               <li>Docker Compose для оркестрации сервисов.</li>
@@ -265,8 +276,8 @@ function TechnologiesPage() {
             Formaslov показывает умение развивать приложение как продукт:
             выделять предметную область, проектировать API и модель данных,
             продумывать права доступа, связывать frontend и backend, работать с
-            экспортом данных и разворачивать fullstack-приложение в
-            контейнерах.
+            асинхронным импортом/экспортом данных и разворачивать
+            fullstack-приложение в контейнерах.
           </p>
           <p>
             Отдельно проект демонстрирует навык осмысленной работы с
@@ -276,8 +287,8 @@ function TechnologiesPage() {
           </p>
           <strong>
             Текущая версия остаётся MVP, но уже закрывает полный базовый
-            сценарий: зарегистрироваться, загрузить текст, создать метки,
-            разметить фрагменты и экспортировать результат для дальнейшего
+            сценарий: зарегистрироваться, загрузить материалы, создать метки,
+            разметить фрагменты и получить JSON-экспорт для дальнейшего
             анализа.
           </strong>
         </div>

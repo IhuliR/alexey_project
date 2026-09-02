@@ -3,20 +3,64 @@ import { Link, useParams } from 'react-router-dom';
 import AnnotationList from '../components/AnnotationList';
 import ErrorMessage from '../components/ErrorMessage';
 import Loader from '../components/Loader';
-import api from '../api/api';
-import {
-  buildDocumentExport,
-  getDocumentExportFilename,
-} from '../utils/export';
+import api, {
+  createExportJob,
+  downloadExportJob,
+  getExportJob,
+} from '../api/api';
+import { getApiErrorMessage } from '../utils/apiErrors';
 import { getRangeTextOffsets, normalizeNewlines } from '../utils/text';
 
 const PAGE_SIZE = 1;
+const EXPORT_POLLING_INTERVAL = 2500;
+const EXPORT_TERMINAL_STATUSES = new Set(['completed', 'failed']);
 
 const getErrorMessage = (error) => {
   if (error?.response?.data) {
     return JSON.stringify(error.response.data);
   }
   return 'Network or server error';
+};
+
+const getContentDispositionFilename = (contentDisposition) => {
+  if (!contentDisposition) {
+    return '';
+  }
+
+  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch?.[1]) {
+    return decodeURIComponent(encodedMatch[1].replace(/"/g, ''));
+  }
+
+  const plainMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+  return plainMatch?.[1] || '';
+};
+
+const downloadBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || 'document_export.json';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const getExportStatusText = (job) => {
+  if (!job) {
+    return '';
+  }
+  if (job.status === 'completed') {
+    return 'Файл экспорта готов.';
+  }
+  if (job.status === 'failed') {
+    return job.error || 'Не удалось сформировать файл экспорта.';
+  }
+  if (job.status === 'processing') {
+    return 'Формируем файл...';
+  }
+  return 'Экспорт поставлен в очередь.';
 };
 
 const toRgba = (hex, alpha) => {
@@ -135,6 +179,10 @@ function DocumentPage() {
   const [saveMessage, setSaveMessage] = useState('');
   const [markupMessage, setMarkupMessage] = useState('');
   const [markupError, setMarkupError] = useState('');
+  const [exportJob, setExportJob] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [downloadingExport, setDownloadingExport] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const labelsById = useMemo(() => {
     return labels.reduce((acc, label) => {
@@ -270,6 +318,38 @@ function DocumentPage() {
       cancelled = true;
     };
   }, [documentId, applyChunkState]);
+
+  useEffect(() => {
+    if (
+      !exportJob?.id ||
+      EXPORT_TERMINAL_STATUSES.has(exportJob.status)
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await getExportJob(exportJob.id);
+        if (!cancelled) {
+          setExportJob(response.data || null);
+          setExportError('');
+        }
+      } catch (requestError) {
+        if (!cancelled) {
+          setExportError(getApiErrorMessage(
+            requestError,
+            'Не удалось получить статус экспорта.'
+          ));
+        }
+      }
+    }, EXPORT_POLLING_INTERVAL);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [exportJob]);
 
   const documentAnnotations = useMemo(() => {
     return annotations.filter((annotation) => Number(annotation.document) === documentId);
@@ -490,25 +570,49 @@ function DocumentPage() {
     }
   };
 
-  const handleExport = () => {
-    const exportData = buildDocumentExport({
-      documentData,
-      labels,
-      annotations: documentAnnotations,
-    });
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError('');
+    setExportJob(null);
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json;charset=utf-8',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = getDocumentExportFilename(documentData);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const response = await createExportJob(documentId, 'json');
+      setExportJob(response.data || null);
+    } catch (requestError) {
+      setExportError(getApiErrorMessage(requestError, 'Не удалось запустить экспорт.'));
+    } finally {
+      setExporting(false);
+    }
   };
+
+  const handleDownloadExport = async () => {
+    if (!exportJob?.id || exportJob.status !== 'completed') {
+      return;
+    }
+
+    setDownloadingExport(true);
+    setExportError('');
+
+    try {
+      const response = await downloadExportJob(exportJob.id);
+      const filename = getContentDispositionFilename(
+        response.headers?.['content-disposition']
+      );
+      downloadBlob(response.data, filename);
+    } catch (requestError) {
+      setExportError(getApiErrorMessage(requestError, 'Не удалось скачать экспорт.'));
+    } finally {
+      setDownloadingExport(false);
+    }
+  };
+
+  const exportInProgress = exporting || (
+    !exportError &&
+    (
+      exportJob?.status === 'pending' ||
+      exportJob?.status === 'processing'
+    )
+  );
 
   const fragmentIndex = Number.isInteger(chunkData?.chunk_index) ? chunkData.chunk_index + 1 : chunkPage;
   const totalChunks = Number.isInteger(chunkData?.total_chunks) ? chunkData.total_chunks : 1;
@@ -648,11 +752,32 @@ function DocumentPage() {
               >
                 Сохранить разметку
               </button>
-              <button type="button" className="btn ghost" onClick={handleExport}>
-                Экспортировать
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={handleExport}
+                disabled={exportInProgress}
+              >
+                {exportInProgress ? 'Формируем...' : 'Экспортировать'}
               </button>
             </div>
 
+            {exportJob ? (
+              <div className="job-status">
+                <p>{getExportStatusText(exportJob)}</p>
+                {exportJob.status === 'completed' ? (
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={handleDownloadExport}
+                    disabled={downloadingExport}
+                  >
+                    {downloadingExport ? 'Скачивание...' : 'Скачать JSON'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <ErrorMessage message={exportError} />
             {saveMessage ? <p className="success-message">{saveMessage}</p> : null}
             {markupMessage ? <p className="success-message">{markupMessage}</p> : null}
             <ErrorMessage message={error} />

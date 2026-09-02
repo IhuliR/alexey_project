@@ -10,8 +10,8 @@ function LandingPage() {
         <p className="eyebrow">Ручная разметка текстов</p>
         <h1>Formaslov</h1>
         <p className="landing-lead">
-          Загружайте .txt-файлы, выделяйте фрагменты, назначайте им метки и
-          экспортируйте готовую разметку в JSON.
+          Загружайте тексты вручную или ZIP-архивом, выделяйте фрагменты,
+          назначайте им метки и экспортируйте готовую разметку в JSON.
         </p>
         <div className="landing-actions">
           {isAuthenticated && !isLoading ? (
@@ -39,8 +39,8 @@ function LandingPage() {
       <section className="feature-grid" aria-label="Возможности Formaslov">
         <article className="feature-card">
           <span className="feature-number">01</span>
-          <h2>Загрузите текст</h2>
-          <p>Создайте документ вручную или выберите UTF-8 файл формата .txt.</p>
+          <h2>Загрузите материалы</h2>
+          <p>Создайте документ вручную, выберите .txt или импортируйте ZIP с .txt/.docx.</p>
         </article>
         <article className="feature-card">
           <span className="feature-number">02</span>
@@ -49,8 +49,8 @@ function LandingPage() {
         </article>
         <article className="feature-card">
           <span className="feature-number">03</span>
-          <h2>Экспортируйте JSON</h2>
-          <p>Используйте результат для датасетов, анализа и исследований.</p>
+          <h2>Экспортируйте результат</h2>
+          <p>Запускайте JSON-экспорт и скачивайте готовый файл после обработки.</p>
         </article>
       </section>
     </main>
