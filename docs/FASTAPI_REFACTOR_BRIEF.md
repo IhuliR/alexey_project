@@ -167,6 +167,6 @@ Celery workers
 - поддерживает фоновое формирование JSON-экспортов;
 - сохраняет существующую основную функциональность Formaslov.
 
-Legacy Django backend пока остаётся источником production image, migrations и CI/CD-сценария. Переключение production deployment на FastAPI требует отдельной работы.
+Production Compose и CI/CD переключены на FastAPI runtime. Legacy Django backend остаётся в репозитории для rollback, migrations и тестов.
 
 В результате создана более подходящая для дальнейшего развития backend-основа без преждевременного усложнения системы.
