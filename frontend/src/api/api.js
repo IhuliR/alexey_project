@@ -123,4 +123,30 @@ export const getCurrentUser = async () => {
 export const changePassword = (passwords) =>
   api.post('users/set_password/', passwords);
 
+export const createImportBatch = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('imports/', formData);
+};
+
+export const getImportBatch = (id) =>
+  api.get(`imports/${id}/`);
+
+export const getImportItems = (id) =>
+  api.get(`imports/${id}/items/`);
+
+export const createExportJob = (documentId, format = 'json') =>
+  api.post('exports/', {
+    document_id: documentId,
+    format,
+  });
+
+export const getExportJob = (id) =>
+  api.get(`exports/${id}/`);
+
+export const downloadExportJob = (id) =>
+  api.get(`exports/${id}/download/`, {
+    responseType: 'blob',
+  });
+
 export default api;

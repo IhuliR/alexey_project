@@ -6,11 +6,11 @@ function Footer() {
       <div className="footer-content">
         <div className="footer-summary">
           <p>
-            Formaslov — приложение для ручной разметки текстов, создания меток
-            и экспорта аннотаций в JSON.
+            Formaslov — приложение для загрузки исследовательских текстов,
+            ручной разметки, пакетного импорта и экспорта результатов в JSON.
           </p>
           <p className="footer-stack">
-            Python · Django · Django REST Framework · React · JWT · PostgreSQL · Docker · Gunicorn · Nginx
+            Python · FastAPI · SQLAlchemy · React · JWT · PostgreSQL · Redis · RabbitMQ · Celery · Docker · Nginx
           </p>
         </div>
 

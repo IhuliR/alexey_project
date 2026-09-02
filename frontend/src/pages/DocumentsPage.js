@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/api';
+import BatchImportForm from '../components/BatchImportForm';
 import DocumentForm from '../components/DocumentForm';
 import ErrorMessage from '../components/ErrorMessage';
 import Loader from '../components/Loader';
@@ -64,9 +65,9 @@ function DocumentsPage() {
     };
   }, [offset, reloadToken]);
 
-  const handleCreated = () => {
+  const handleCreated = useCallback(() => {
     setReloadToken((prev) => prev + 1);
-  };
+  }, []);
 
   const shownCount = Math.min(count, offset + documents.length);
 
@@ -76,6 +77,8 @@ function DocumentsPage() {
         <section className="card">
           <h1 className="page-title">Документы</h1>
           <DocumentForm onCreated={handleCreated} />
+          <div className="form-divider" />
+          <BatchImportForm onCompleted={handleCreated} />
           <ErrorMessage message={error} />
         </section>
 
