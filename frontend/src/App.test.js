@@ -27,7 +27,7 @@ test('renders the public landing page with primary actions', async () => {
     '/login'
   );
   expect(screen.getByRole('contentinfo')).toHaveTextContent(
-    'приложение для ручной разметки текстов'
+    'пакетного импорта и экспорта результатов'
   );
   expect(screen.getByRole('link', { name: 'Репозиторий' })).toHaveAttribute(
     'href',
@@ -94,7 +94,7 @@ test('opens the public technologies page without authentication', async () => {
   expect(
     screen.getByRole('heading', { name: 'Работа с AI-инструментами' })
   ).toBeInTheDocument();
-  expect(screen.getByText('Django REST Framework')).toBeInTheDocument();
+  expect(screen.getByText('FastAPI')).toBeInTheDocument();
   expect(localStorage.getItem('access_token')).toBeNull();
 });
 
