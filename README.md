@@ -1,28 +1,28 @@
 # Formaslov
 
-Formaslov is a web application for working with qualitative research texts in Russian. It lets a user upload materials, organize text documents, mark text fragments with labels, and export annotation results.
+Formaslov — веб-приложение для работы с русскоязычными текстами качественных исследований. В нём можно загружать материалы, организовывать текстовые документы, размечать фрагменты метками и экспортировать результаты аннотирования.
 
-The project started as a Django / Django REST Framework application. The main backend API has been migrated to FastAPI and is used in production.
+Проект начинался как приложение на Django / Django REST Framework. Основной backend API перенесён на FastAPI и используется в production.
 
-## Status
+## Статус
 
-Formaslov is an MVP with a deployed FastAPI backend, React frontend, PostgreSQL persistence, Redis caching, and Celery background tasks through RabbitMQ. The project is still evolving, but the main document, annotation, import, and export flows are implemented.
+Formaslov — MVP с развёрнутым FastAPI backend, React frontend, PostgreSQL в качестве основного хранилища, Redis-кэшированием и фоновыми задачами Celery через RabbitMQ. Проект продолжает развиваться, но основные сценарии работы с документами, аннотациями, импортом и экспортом уже реализованы.
 
-## Key Features
+## Возможности
 
-- JWT authentication and user-owned data.
-- Text document creation, editing, listing, and deletion.
-- Single `.txt` upload and manual document creation.
-- Batch ZIP import for research materials.
-- `.txt` and `.docx` processing inside ZIP imports.
-- Manual annotation of text fragments with absolute offsets.
-- User-defined labels and categories with colors.
-- Redis caching for frequently read label lists.
-- Background import processing with status tracking.
-- Background JSON export with status tracking and file download.
-- FastAPI OpenAPI documentation.
+- JWT-аутентификация и данные, привязанные к пользователю.
+- Создание, редактирование, просмотр списка и удаление текстовых документов.
+- Одиночная загрузка `.txt` и ручное создание документов.
+- Пакетный ZIP-импорт исследовательских материалов.
+- Обработка `.txt` и `.docx` внутри ZIP-архивов.
+- Ручная разметка текстовых фрагментов с абсолютными позициями (offsets).
+- Пользовательские метки и категории с цветами.
+- Redis-кэширование часто запрашиваемых списков меток.
+- Фоновая обработка импорта с отслеживанием статуса.
+- Фоновый JSON-экспорт с отслеживанием статуса и скачиванием файла.
+- OpenAPI-документация FastAPI.
 
-## Tech Stack
+## Стек
 
 **Backend**
 
@@ -30,14 +30,14 @@ Formaslov is an MVP with a deployed FastAPI backend, React frontend, PostgreSQL 
 - FastAPI
 - SQLAlchemy 2
 - Pydantic
-- JWT authentication
+- JWT-аутентификация
 
-**Database**
+**База данных**
 
 - PostgreSQL
 - Alembic
 
-**Background Tasks and Cache**
+**Фоновые задачи и кэш**
 
 - Celery
 - RabbitMQ
@@ -49,7 +49,7 @@ Formaslov is an MVP with a deployed FastAPI backend, React frontend, PostgreSQL 
 - React Router
 - Axios
 
-**Infrastructure**
+**Инфраструктура**
 
 - Docker
 - Docker Compose
@@ -57,9 +57,9 @@ Formaslov is an MVP with a deployed FastAPI backend, React frontend, PostgreSQL 
 - GitHub Actions
 - Docker Hub
 
-The repository still contains the previous Django / DRF backend for migration compatibility, regression tests, and rollback.
+В репозитории остаётся прежний Django / DRF backend для совместимости миграции, регрессионных тестов и отката.
 
-## Architecture
+## Архитектура
 
 ```text
 React frontend
@@ -75,48 +75,48 @@ PostgreSQL -----------------------+
                     shared import/export storage
 ```
 
-FastAPI handles the REST API, authentication, validation, database access, and task creation. PostgreSQL is the source of truth. Redis is used only as a cache layer. RabbitMQ is the Celery broker. The FastAPI service and Celery worker share local storage for uploaded import archives and generated export files.
+FastAPI отвечает за REST API, аутентификацию, валидацию, доступ к базе данных и создание фоновых задач. PostgreSQL — основное хранилище данных. Redis используется только как слой кэширования. RabbitMQ работает как брокер Celery. Сервис FastAPI и Celery worker используют общее локальное хранилище для загруженных архивов импорта и сформированных файлов экспорта.
 
-More details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Подробности описаны в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Background Processing
+## Фоновая обработка
 
-Batch imports and exports run outside the HTTP request lifecycle.
+Пакетный импорт и экспорт выполняются вне жизненного цикла HTTP-запроса.
 
-For batch import, the user uploads a ZIP archive. The API creates an import record, sends a Celery task through RabbitMQ, and returns `202 Accepted`. The worker reads `.txt` and `.docx` files, creates documents, stores per-file errors, and updates the import status in PostgreSQL. A damaged file does not have to fail the whole batch.
+При пакетном импорте пользователь загружает ZIP-архив. API создаёт запись импорта, отправляет задачу Celery через RabbitMQ и возвращает `202 Accepted`. Celery worker читает `.txt` и `.docx` файлы, создаёт документы, сохраняет ошибки по отдельным файлам и обновляет статус импорта в PostgreSQL. Повреждённый файл не обязан приводить к падению всего пакетного импорта.
 
-For export, the API creates an export job and returns `202 Accepted`. The worker reads the document, labels, and annotations from PostgreSQL, writes a JSON file, updates the export status, and the user downloads the completed file through a separate endpoint.
+При экспорте API создаёт задачу экспорта и возвращает `202 Accepted`. Celery worker читает документ, метки и аннотации из PostgreSQL, записывает JSON-файл, обновляет статус экспорта, а пользователь скачивает готовый файл через отдельный endpoint.
 
 ## API
 
-The REST API uses the `/api/v1/` prefix.
+REST API использует префикс `/api/v1/`.
 
-Main endpoint groups:
+Основные группы endpoints:
 
-- auth and user account endpoints;
+- auth и user account endpoints;
 - documents;
 - imports;
 - exports;
 - labels;
 - annotations.
 
-FastAPI serves the generated API docs at:
+FastAPI отдаёт сгенерированную документацию API по адресам:
 
 - `/docs`
 - `/redoc`
 - `/openapi.json`
 
-The full API contract and examples are in [docs/API_GUIDE.md](docs/API_GUIDE.md).
+Полный контракт API и примеры находятся в [docs/API_GUIDE.md](docs/API_GUIDE.md).
 
-## Local Development
+## Локальная разработка
 
-Create a local environment file:
+Создайте локальный файл окружения:
 
 ```bash
 cp .env.example .env
 ```
 
-For local development, the root `docker-compose.yml` starts the FastAPI runtime and supporting services:
+Для локальной разработки корневой `docker-compose.yml` запускает сервис FastAPI и вспомогательные сервисы:
 
 ```bash
 docker compose build api celery-worker
@@ -125,9 +125,9 @@ docker compose run --rm api alembic upgrade head
 docker compose up api celery-worker
 ```
 
-The API is available at `http://127.0.0.1:8000/api/v1/`.
+API доступен по адресу `http://127.0.0.1:8000/api/v1/`.
 
-Useful service URLs:
+Полезные адреса сервисов:
 
 ```text
 http://127.0.0.1:8000/health
@@ -135,7 +135,7 @@ http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/redoc
 ```
 
-To run the frontend:
+Для запуска frontend:
 
 ```bash
 cd frontend
@@ -143,85 +143,85 @@ npm ci --legacy-peer-deps
 npm start
 ```
 
-Set `REACT_APP_API_URL` in `frontend/.env` when the API is not available at the default path:
+Укажите `REACT_APP_API_URL` в `frontend/.env`, если API недоступен по стандартному пути:
 
 ```env
 REACT_APP_API_URL=http://127.0.0.1:8000/api/v1/
 ```
 
-The React app runs at `http://localhost:3000`.
+React-приложение запускается на `http://localhost:3000`.
 
-## Tests
+## Тесты
 
-FastAPI tests:
+Тесты FastAPI:
 
 ```bash
 python -m pytest tests -q
 ```
 
-Frontend tests:
+Тесты frontend:
 
 ```bash
 cd frontend
 npm test -- --watchAll=false
 ```
 
-Legacy Django regression tests:
+Регрессионные тесты legacy Django:
 
 ```bash
 cd backend
 python manage.py test
 ```
 
-CI runs backend tests, legacy Django tests, and frontend tests before building deployment images.
+CI запускает тесты backend, регрессионные тесты legacy Django и тесты frontend перед сборкой Docker-образов для развёртывания.
 
-## Deployment
+## Развёртывание
 
-Production deployment uses Docker images built by GitHub Actions:
+Production-развёртывание использует Docker-образы, собранные через GitHub Actions:
 
-- FastAPI backend image;
-- React frontend image;
-- Nginx gateway image.
+- образ FastAPI backend;
+- образ React frontend;
+- образ Nginx gateway.
 
-Production Compose runs:
+Production Compose запускает:
 
 - PostgreSQL;
 - Redis;
 - RabbitMQ;
 - FastAPI backend;
 - Celery worker;
-- frontend static build;
+- статическую сборку frontend;
 - Nginx gateway.
 
-The workflow runs tests, builds Docker images, pushes them to Docker Hub with commit SHA tags, applies Alembic migrations, starts the runtime services, and checks `/health`.
+Workflow запускает тесты, собирает Docker-образы, публикует их в Docker Hub с тегами по commit SHA, применяет Alembic migrations, запускает сервисы приложения и проверяет `/health`.
 
-Deployment details, required environment variables, and rollback notes are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Детали развёртывания, обязательные переменные окружения и заметки по откату описаны в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Project Structure
+## Структура проекта
 
 ```text
 app/                 FastAPI backend
-alembic/             database migrations
-tests/               FastAPI tests
-frontend/            React frontend and frontend tests
+alembic/             миграции базы данных
+tests/               тесты FastAPI
+frontend/            React frontend и тесты frontend
 infra/               production Docker Compose
-nginx/               gateway image and Nginx template
-backend/             legacy Django backend, migrations, and tests
-docs/                project documentation
-demo/                static demo artifact
+nginx/               образ gateway и шаблон Nginx
+backend/             legacy Django backend, migrations и тесты
+docs/                документация проекта
+demo/                статический demo-артефакт
 ```
 
 ## Legacy Django Backend
 
-Formaslov was originally built with Django and Django REST Framework. The main API has since been migrated to FastAPI. The legacy Django backend remains in the repository for migration compatibility, regression tests, and rollback, but it is not the current production runtime.
+Formaslov изначально был построен на Django и Django REST Framework. Сейчас основной API перенесён на FastAPI. Legacy Django backend остаётся в репозитории для совместимости миграции, регрессионных тестов и отката, но не является текущим production runtime.
 
-## Documentation
+## Документация
 
-- [Architecture](docs/ARCHITECTURE.md)
+- [Архитектура](docs/ARCHITECTURE.md)
 - [API Guide](docs/API_GUIDE.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [FastAPI refactor brief](docs/FASTAPI_REFACTOR_BRIEF.md)
 
-## License
+## Лицензия
 
 [MIT](LICENSE)
